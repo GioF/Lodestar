@@ -13,17 +13,29 @@ namespace Lodestar::Master {
 
     enum nodeType {topic, dir};
 
-    //TODO: finish master node handle in order to know what to write here
     struct registrar {
-        std::string handleName;
+        std::string address;
+        int nodeSocketFd;   //maybe should be a pointer to the node array
     };
 
-    //TODO: finish master node handle in order to know what to write here
-    struct topicNode {
+    struct topicTreeNode {
         nodeType type;
         std::string name;
-        std::vector<topicNode> subNodes;
+        std::vector<topicTreeNode> subNodes;
+        std::vector<registrar> publishers;
+        std::vector<registrar> subscribers;
+    };
 
+    struct topicTreeRef {
+        std::string address;
+        topicTreeNode* topicPointer;
+        registrar* directPointer;
+    };
+
+    struct node {
+        int socketFd;
+        std::vector<topicTreeRef> publishers;
+        std::vector<topicTreeRef> subscribers;
     };
 
     class Master {
@@ -53,7 +65,8 @@ namespace Lodestar::Master {
             sockaddr_un sockaddr;
             char buffer[1024];
 
-            topicNode* rootNode;
+            topicTreeNode* rootNode;
+            std::vector<node> nodeArray;
 
             //TODO: test this function
             std::vector<std::string> tokenizeTopicStr(std::string path){
@@ -72,16 +85,16 @@ namespace Lodestar::Master {
             }
 
             //TODO: test this function
-            topicNode* getDir(std::vector<std::string> dirPath){
-                topicNode *currentDir = rootNode;
-                topicNode *foundDir = NULL;
-                std::vector<topicNode>::iterator subNodeIterator;
+            topicTreeNode* getDir(std::vector<std::string> dirPath){
+                topicTreeNode *currentDir = rootNode;
+                topicTreeNode *foundDir = NULL;
+                std::vector<topicTreeNode>::iterator subNodeIterator;
 
                 for(int i = 0; i < dirPath.size(); i++){
                     //to avoid unnecessary processing in the case
                     //the next nodes are all empty (fresh)
                     if(currentDir->subNodes.empty()){
-                        currentDir->subNodes.push_back(topicNode {nodeType::dir, dirPath[i]});
+                        currentDir->subNodes.push_back(topicTreeNode {nodeType::dir, dirPath[i]});
                         currentDir = &currentDir->subNodes.back();
                     }
 
@@ -92,7 +105,7 @@ namespace Lodestar::Master {
 
                     //if subnode with given name was not found, insert it
                     if(foundDir == NULL){
-                        currentDir->subNodes.push_back(topicNode {nodeType::dir, dirPath[i]});
+                        currentDir->subNodes.push_back(topicTreeNode {nodeType::dir, dirPath[i]});
                         currentDir = &currentDir->subNodes.back();
                     } else {
                         currentDir = foundDir;
@@ -102,15 +115,36 @@ namespace Lodestar::Master {
                 return currentDir;
             }
 
-            //TODO: finish master node handle in order to know what to write here
-            void registerInTopic(std::string path, nodeType registrantType){
+            //TODO: test this function
+            topicTreeNode* getTopic(topicTreeNode* dir, std::string topicName){
+                topicTreeNode* topic = NULL;
+
+                std::vector<topicTreeNode>::iterator it;
+                for(it = dir->subNodes.begin(); it != dir->subNodes.end(); it++){
+                    if(it->type == nodeType::topic && it->name == topicName)
+                        topic = &(*it);
+                }
+
+                return topic;
+            }
+
+            //TODO: also insert topic into node on nodeArray
+            void registerToTopic(std::string path, std::string registrarType, int nodeSocket, std::string address){
                 std::vector<std::string> tokenizedPath = tokenizeTopicStr(path);
                 std::string topicName = tokenizedPath.back();
-
                 tokenizedPath.pop_back();
-                topicNode* dir = getDir(tokenizedPath);
 
-                dir->subNodes.push_back(topicNode {registrantType, topicName});
+                topicTreeNode* dir = getDir(tokenizedPath);
+                topicTreeNode* topic = getTopic(dir, topicName);
+
+                if(!topic){
+                    dir->subNodes.push_back(topicTreeNode {nodeType::topic, topicName});
+                    topic = &(dir->subNodes.back());
+                }
+
+                registrarType == "pub" ?
+                    topic->publishers.push_back(registrar {address, nodeSocket}):
+                    topic->subscribers.push_back(registrar {address, nodeSocket});
             }
     };
 }
