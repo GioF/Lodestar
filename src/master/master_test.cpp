@@ -68,4 +68,16 @@ TEST_CASE("Master"){
         REQUIRE(returnedDir->name == lastdir.name);
         REQUIRE(returnedDir->type == lastdir.type);
     }
+
+    SUBCASE("getDir - directory insertion"){
+        std::vector<std::string> dirPath = master.tokenizeTopicStr("dir1/dir2/lastdir");
+
+        Lodestar::Master::topicTreeNode* firstReturnedDir;
+        Lodestar::Master::topicTreeNode* secondReturnedDir;
+
+        firstReturnedDir = master.getDir(dirPath);
+        secondReturnedDir = master.getDir(dirPath);
+
+        REQUIRE(firstReturnedDir == secondReturnedDir);
+    }
 }

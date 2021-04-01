@@ -84,7 +84,6 @@ namespace Lodestar::Master {
                 return separatedPath;
             }
 
-            //TODO: test this function
             topicTreeNode* getDir(std::vector<std::string> dirPath){
                 topicTreeNode *currentDir = rootNode;
                 topicTreeNode *foundDir = NULL;
