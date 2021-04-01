@@ -39,6 +39,7 @@ namespace Lodestar::Master {
     };
 
     class Master {
+        friend class Master_test;
 
         public:
             ~Master(){
@@ -46,19 +47,19 @@ namespace Lodestar::Master {
                 unlink(sockaddr.sun_path);
             }
 
-            //TODO: launch listening loop
-            Master(std::string sockPath){
-                sockfd = socket(AF_LOCAL, SOCK_DGRAM, 0);
-                if(sockfd < 0)
-                    throw "Error creating socket";
+            //TODO: finish constructor
+            // Master(std::string sockPath){
+            //     sockfd = socket(AF_LOCAL, SOCK_DGRAM, 0);
+            //     if(sockfd < 0)
+            //         throw "Error creating socket";
 
-                sockaddr.sun_family = AF_LOCAL;
-                std::strcpy(sockaddr.sun_path, sockPath.c_str());
+            //     sockaddr.sun_family = AF_LOCAL;
+            //     std::strcpy(sockaddr.sun_path, sockPath.c_str());
 
-                if(bind(sockfd, (struct sockaddr *) &sockaddr, sizeof(sockaddr_un))){
-                    throw "Error binding socket";
-                };
-            }
+            //     if(bind(sockfd, (struct sockaddr *) &sockaddr, sizeof(sockaddr_un))){
+            //         throw "Error binding socket";
+            //     };
+            // }
 
         private:
             int sockfd;
