@@ -66,10 +66,9 @@ namespace Lodestar::Master {
             sockaddr_un sockaddr;
             char buffer[1024];
 
-            topicTreeNode* rootNode;
+            topicTreeNode* rootNode = new topicTreeNode;
             std::vector<node> nodeArray;
 
-            //TODO: test this function
             std::vector<std::string> tokenizeTopicStr(std::string path){
                 std::vector<std::string> separatedPath;
                 char *token;
