@@ -52,19 +52,21 @@ TEST_CASE("Master"){
         
         major.name = "major";
         major.type = Lodestar::Master::nodeType::dir;
-        master.rootNode->subNodes.push_back(major);
 
         minor.name = "minor";
         minor.type = Lodestar::Master::nodeType::dir;
-        major.subNodes.push_back(minor);
 
         topic.name = "topic";
         topic.type = Lodestar::Master::nodeType::topic;
+
         minor.subNodes.push_back(topic);
+        major.subNodes.push_back(minor);
+        master.rootNode->subNodes.push_back(major);
 
         Lodestar::Master::topicTreeNode* returnedTopic;
         returnedTopic = master.getDir(dirPath);
 
-        REQUIRE(returnedTopic == &topic);
+        REQUIRE(returnedTopic->name == topic.name);
+        REQUIRE(returnedTopic->type == topic.type);
     }
 }
