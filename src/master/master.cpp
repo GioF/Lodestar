@@ -92,23 +92,23 @@ namespace Lodestar::Master {
 
                 for(int i = 0; i < dirPath.size(); i++){
                     //to avoid unnecessary processing in the case
-                    //the next nodes are all empty (fresh)
+                    //the next nodes are all empty
                     if(currentDir->subNodes.empty()){
                         currentDir->subNodes.push_back(topicTreeNode {nodeType::dir, dirPath[i]});
                         currentDir = &currentDir->subNodes.back();
-                    }
-
-                    for(subNodeIterator = currentDir->subNodes.begin(); subNodeIterator < currentDir->subNodes.end(); subNodeIterator++){
-                        if(subNodeIterator->name == dirPath[0])
-                            foundDir = &(*subNodeIterator);
-                    }
-
-                    //if subnode with given name was not found, insert it
-                    if(foundDir == NULL){
-                        currentDir->subNodes.push_back(topicTreeNode {nodeType::dir, dirPath[i]});
-                        currentDir = &currentDir->subNodes.back();
                     } else {
-                        currentDir = foundDir;
+                        for(subNodeIterator = currentDir->subNodes.begin(); subNodeIterator < currentDir->subNodes.end(); subNodeIterator++){
+                            if(subNodeIterator->name == dirPath[0])
+                                foundDir = &(*subNodeIterator);
+                        }
+                        
+                        //if subnode with given name was not found, insert it
+                        if(foundDir == NULL){
+                            currentDir->subNodes.push_back(topicTreeNode {nodeType::dir, dirPath[i]});
+                            currentDir = &currentDir->subNodes.back();
+                        } else {
+                            currentDir = foundDir;
+                        }
                     }
                 }
 
