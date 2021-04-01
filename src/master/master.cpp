@@ -42,10 +42,10 @@ namespace Lodestar::Master {
         friend class Master_test;
 
         public:
-            ~Master(){
-                close(sockfd);
-                unlink(sockaddr.sun_path);
-            }
+            // ~Master(){
+            //     close(sockfd);
+            //     unlink(sockaddr.sun_path);
+            // }
 
             //TODO: finish constructor
             // Master(std::string sockPath){
