@@ -30,33 +30,33 @@ namespace Lodestar::Master {
 TEST_CASE("Master"){
     Lodestar::Master::Master_test master;
 
-    std::string path = "major/minor/topic";
+    std::string path = "dir1/dir2/lastdir";
     Lodestar::Master::topicTreeNode major;
     Lodestar::Master::topicTreeNode minor;
     Lodestar::Master::topicTreeNode topic;
 
 
-    SUBCASE("Path tokenization/separation"){
+    SUBCASE("tokenizeTopicStr - separate path into vector"){
         std::vector<std::string> supposedPath;
-        supposedPath.push_back("major");
-        supposedPath.push_back("minor");
-        supposedPath.push_back("topic");
+        supposedPath.push_back("dir1");
+        supposedPath.push_back("dir2");
+        supposedPath.push_back("lastdir");
 
         std::vector<std::string> returnedPath = master.tokenizeTopicStr(path);
 
         REQUIRE(returnedPath == supposedPath);
     }
 
-    SUBCASE("Topic finding"){
-        std::vector<std::string> dirPath = master.tokenizeTopicStr("major/minor/topic");
+    SUBCASE("getDir - directory finding"){
+        std::vector<std::string> dirPath = master.tokenizeTopicStr("dir1/dir2/lastdir");
         
-        major.name = "major";
+        major.name = "dir1";
         major.type = Lodestar::Master::nodeType::dir;
 
-        minor.name = "minor";
+        minor.name = "dir2";
         minor.type = Lodestar::Master::nodeType::dir;
 
-        topic.name = "topic";
+        topic.name = "lastdir";
         topic.type = Lodestar::Master::nodeType::topic;
 
         minor.subNodes.push_back(topic);
