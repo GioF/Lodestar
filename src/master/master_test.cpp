@@ -31,10 +31,9 @@ TEST_CASE("Master"){
     Lodestar::Master::Master_test master;
 
     std::string path = "dir1/dir2/lastdir";
-    Lodestar::Master::topicTreeNode major;
-    Lodestar::Master::topicTreeNode minor;
-    Lodestar::Master::topicTreeNode topic;
-
+    Lodestar::Master::topicTreeNode dir1;
+    Lodestar::Master::topicTreeNode dir2;
+    Lodestar::Master::topicTreeNode lastdir;
 
     SUBCASE("tokenizeTopicStr - separate path into vector"){
         std::vector<std::string> supposedPath;
@@ -50,23 +49,23 @@ TEST_CASE("Master"){
     SUBCASE("getDir - directory finding"){
         std::vector<std::string> dirPath = master.tokenizeTopicStr("dir1/dir2/lastdir");
         
-        major.name = "dir1";
-        major.type = Lodestar::Master::nodeType::dir;
+        dir1.name = "dir1";
+        dir1.type = Lodestar::Master::nodeType::dir;
 
-        minor.name = "dir2";
-        minor.type = Lodestar::Master::nodeType::dir;
+        dir2.name = "dir2";
+        dir2.type = Lodestar::Master::nodeType::dir;
 
-        topic.name = "lastdir";
-        topic.type = Lodestar::Master::nodeType::topic;
+        lastdir.name = "lastdir";
+        lastdir.type = Lodestar::Master::nodeType::topic;
 
-        minor.subNodes.push_back(topic);
-        major.subNodes.push_back(minor);
-        master.rootNode->subNodes.push_back(major);
+        dir1.subNodes.push_back(lastdir);
+        dir2.subNodes.push_back(dir2);
+        master.rootNode->subNodes.push_back(dir1);
 
-        Lodestar::Master::topicTreeNode* returnedTopic;
-        returnedTopic = master.getDir(dirPath);
+        Lodestar::Master::topicTreeNode* returnedDir;
+        returnedDir = master.getDir(dirPath);
 
-        REQUIRE(returnedTopic->name == topic.name);
-        REQUIRE(returnedTopic->type == topic.type);
+        REQUIRE(returnedDir->name == lastdir.name);
+        REQUIRE(returnedDir->type == lastdir.type);
     }
 }
