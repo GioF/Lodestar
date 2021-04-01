@@ -97,8 +97,8 @@ namespace Lodestar::Master {
                         currentDir->subNodes.push_back(topicTreeNode {nodeType::dir, dirPath[i]});
                         currentDir = &currentDir->subNodes.back();
                     } else {
-                        for(subNodeIterator = currentDir->subNodes.begin(); subNodeIterator < currentDir->subNodes.end(); subNodeIterator++){
-                            if(subNodeIterator->name == dirPath[0])
+                        for(subNodeIterator = currentDir->subNodes.begin(); subNodeIterator != currentDir->subNodes.end(); subNodeIterator++){
+                            if(subNodeIterator->name == dirPath[i])
                                 foundDir = &(*subNodeIterator);
                         }
                         
