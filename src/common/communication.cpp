@@ -144,4 +144,16 @@ namespace Lodestar {
 
         return data;
     }
+
+    struct shutdown {
+        uint8_t code; ///< code of shutdown, denoting reason for it.
+    };
+
+    char serializeShutdown(uint8_t code){
+        return (char)code;
+    }
+
+    uint8_t deserializeShutdown(char buf){
+        return (uint8_t)buf;
+    }
 }
