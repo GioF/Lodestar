@@ -80,4 +80,23 @@ TEST_CASE("Master"){
 
         REQUIRE(firstReturnedDir == secondReturnedDir);
     }
+
+    SUBCASE("getTopic - topic finding"){
+        std::vector<std::string> dirPath = master.tokenizeTopicStr("dir1/dir2");
+        Lodestar::Master::topicTreeNode* dir;
+        dir = master.getDir(dirPath);
+
+        Lodestar::Master::topicTreeNode* returnedTopic;
+        returnedTopic = master.getTopic(dir, "topic");
+
+        REQUIRE(returnedTopic == NULL);
+
+        Lodestar::Master::topicTreeNode topic;
+        topic.name = "topic";
+        topic.type = Lodestar::Master::nodeType::topic;
+        dir->subNodes.push_back(topic);
+
+        returnedTopic = master.getTopic(dir, "topic");
+        REQUIRE(returnedTopic->name == topic.name);
+    }
 }

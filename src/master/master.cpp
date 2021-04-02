@@ -114,7 +114,6 @@ namespace Lodestar::Master {
                 return currentDir;
             }
 
-            //TODO: test this function
             topicTreeNode* getTopic(topicTreeNode* dir, std::string topicName){
                 topicTreeNode* topic = NULL;
 
