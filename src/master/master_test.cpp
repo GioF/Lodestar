@@ -99,4 +99,32 @@ TEST_CASE("Master"){
         returnedTopic = master.getTopic(dir, "topic");
         REQUIRE(returnedTopic->name == topic.name);
     }
+
+    SUBCASE("registerToTopic - topic registration/insertion"){
+        std::vector<std::string> dirPath = master.tokenizeTopicStr("dir1");
+        Lodestar::Master::topicTreeNode* dir;
+        dir = master.getDir(dirPath);
+
+        int nodeSocket = 0;
+        std::string registrarType = "pub";
+        std::string address = "sample";
+        Lodestar::Master::registrar* registrar = NULL;
+
+        SUBCASE("registerToTopic - topic doesn't exist yet"){
+            master.registerToTopic("dir1/topic", registrarType, nodeSocket, address);
+            registrar = &(dir->subNodes[0].publishers[0]);
+            REQUIRE(registrar->address == address);
+            REQUIRE(registrar->nodeSocketFd == nodeSocket);
+        }
+
+        SUBCASE("registerToTopic - topic exists"){
+            Lodestar::Master::topicTreeNode* returnedTopic;
+            returnedTopic = master.getTopic(dir, "topic");
+
+            master.registerToTopic("dir1/topic", registrarType, nodeSocket, address);
+            registrar = &(dir->subNodes[0].publishers[0]);
+            REQUIRE(registrar->address == address);
+            REQUIRE(registrar->nodeSocketFd == nodeSocket);
+        }
+    }
 }
