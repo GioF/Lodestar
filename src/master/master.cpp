@@ -8,40 +8,61 @@
 #include <sys/un.h>
 #include <unistd.h>
 #include "../node/nodeMsg.h"
+#include "../common/types.h"
 
-namespace Lodestar::Master {
+namespace Lodestar{
 
-    enum nodeType {topic, dir};
-
-    struct registrar {
-        std::string address;
-        int nodeSocketFd;   //maybe should be a pointer to the node array
-    };
-
-    struct topicTreeNode {
-        nodeType type;
-        std::string name;
-        std::vector<topicTreeNode> subNodes;
-        std::vector<registrar> publishers;
-        std::vector<registrar> subscribers;
-    };
-
-    struct topicTreeRef {
-        std::string address;
-        topicTreeNode* topicPointer;
-        registrar* directPointer;
-    };
-
-    struct node {
-        int socketFd;
-        std::vector<topicTreeRef> publishers;
-        std::vector<topicTreeRef> subscribers;
-    };
-
+    /**
+     * Class responsible for implementing service discovery for each publisher/subscriber.
+     * */
     class Master {
         friend class Master_test;
 
         public:
+
+            /**
+             * A struct that represent nodes which register to topics.
+             * */
+            struct registrar {
+                std::string address;  ///< string used by the node to identify an instance of a publisher/subscriber.*/
+                int nodeSocketFd;     ///< the socket file descriptor of the node.*/
+            };
+            
+            /**
+             * A struct that defined a node of the topic tree.
+             *
+             * Node, in this context, is used to refer to an element in a tree,
+             * instead of a component in a distributed system.
+             * */
+            struct topicTreeNode {
+                nodeType type;                       ///< The type of the tree node; a directory of topics or a topic.
+                std::string name;                    ///< The name of the topic or directory.
+                std::vector<topicTreeNode> subNodes; ///< Subdirectories of a directory; empty if a topic.
+                std::vector<registrar> publishers;   ///< a vector of nodes that publish to this topic; empty if a directory.
+                std::vector<registrar> subscribers;  ///< a vector of nodes that subscribe to this topic; empty if a directory.
+            };
+            
+            /**
+             * A struct that represents a reference to a topic, from the node array.
+             * */
+            struct topicTreeRef {
+                std::string address;         ///< the same as the registrar address.
+                topicTreeNode* topicPointer; ///< a pointer to the subscriber topic.
+                registrar* directPointer;    ///< a direct pointer to the registrar.
+            };
+            
+            /**
+             * A struct that represents a node.
+             *
+             * This is the common meaning of a node; a component in a distributed
+             * system. 
+             * */
+            struct node {
+                int socketFd;                          ///< The file descriptor of the nodes' socket.
+                std::vector<topicTreeRef> publishers;  ///< vector of topics the node publishes to.
+                std::vector<topicTreeRef> subscribers; ///< vector of topics the node subscribes to.
+            };
+
             // ~Master(){
             //     close(sockfd);
             //     unlink(sockaddr.sun_path);
@@ -62,13 +83,19 @@ namespace Lodestar::Master {
             // }
 
         private:
-            int sockfd;
+            int sockfd;           ///< master listening socket file descriptor.
             sockaddr_un sockaddr;
-            char buffer[1024];
+            char buffer[1024];    ///< buffer that the listening socket uses.
 
-            topicTreeNode* rootNode = new topicTreeNode;
-            std::vector<node> nodeArray;
+            topicTreeNode* rootNode = new topicTreeNode; ///< tree of directories and topics.
+            std::vector<node> nodeArray;                 ///< array of nodes connected to this master.
 
+            /**
+             * Tokenizes (separates) path string into indexable vector.
+             *
+             * @param[in] Path the path string to be tokenized.
+             * @returns The vector in which each element is a "directory" of the path.
+             * */
             std::vector<std::string> tokenizeTopicStr(std::string path){
                 std::vector<std::string> separatedPath;
                 char *token;
@@ -84,6 +111,14 @@ namespace Lodestar::Master {
                 return separatedPath;
             }
 
+            /**
+             * Traverses the topic tree and returns directory at the end of a path.
+             *
+             * If during tree traversal a directory is not found, it will be created.
+             *
+             * @param[in] dirPath A vector that represents a path.
+             * @returns A pointer to the topic tree node which has the last element dirPath as its name.
+             * */
             topicTreeNode* getDir(std::vector<std::string> dirPath){
                 topicTreeNode *currentDir = rootNode;
                 topicTreeNode *foundDir = NULL;
@@ -114,6 +149,16 @@ namespace Lodestar::Master {
                 return currentDir;
             }
 
+            /**
+             * Gets a topic from a directory.
+             *
+             * If a topic with the given does not exist, it will be created.
+             *
+             * @param[in] dir The directory in which the topic is (or will be)
+             * @param[in] topicName The topic name.
+             *
+             * @returns A pointer to the topic.
+             * */
             topicTreeNode* getTopic(topicTreeNode* dir, std::string topicName){
                 topicTreeNode* topic = NULL;
 
@@ -127,6 +172,14 @@ namespace Lodestar::Master {
             }
 
             // TODO: also insert topic into node on nodeArray
+            /**
+             * Registers a node to a topic.
+             *
+             * @param path The path of the topic.
+             * @param registrarType The relation of the node to the topic ("pub": publication or "sub": subscription).
+             * @param nodeSocket The socket file descriptor of the node.
+             * @param address The address of the node.
+             * */
             void registerToTopic(std::string path, std::string registrarType, int nodeSocket, std::string address){
                 std::vector<std::string> tokenizedPath = tokenizeTopicStr(path);
                 std::string topicName = tokenizedPath.back();

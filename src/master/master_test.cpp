@@ -1,8 +1,9 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "master.cpp"
 #include "../common/doctest.h"
+#include "../common/types.h"
 
-namespace Lodestar::Master {
+namespace Lodestar{
     class Master_test: Master{
         public:
             Master master;
@@ -28,7 +29,7 @@ namespace Lodestar::Master {
 }
 
 TEST_CASE("Master"){
-    Lodestar::Master::Master_test master;
+    Lodestar::Master_test master;
 
     std::string path = "dir1/dir2/lastdir";
     Lodestar::Master::topicTreeNode dir1;
@@ -50,13 +51,13 @@ TEST_CASE("Master"){
         std::vector<std::string> dirPath = master.tokenizeTopicStr("dir1/dir2/lastdir");
         
         dir1.name = "dir1";
-        dir1.type = Lodestar::Master::nodeType::dir;
+        dir1.type = Lodestar::nodeType::dir;
 
         dir2.name = "dir2";
-        dir2.type = Lodestar::Master::nodeType::dir;
+        dir2.type = Lodestar::nodeType::dir;
 
         lastdir.name = "lastdir";
-        lastdir.type = Lodestar::Master::nodeType::topic;
+        lastdir.type = Lodestar::nodeType::topic;
 
         dir1.subNodes.push_back(lastdir);
         dir2.subNodes.push_back(dir2);
@@ -93,7 +94,7 @@ TEST_CASE("Master"){
 
         Lodestar::Master::topicTreeNode topic;
         topic.name = "topic";
-        topic.type = Lodestar::Master::nodeType::topic;
+        topic.type = Lodestar::nodeType::topic;
         dir->subNodes.push_back(topic);
 
         returnedTopic = master.getTopic(dir, "topic");
