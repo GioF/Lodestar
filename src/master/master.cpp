@@ -47,7 +47,7 @@ namespace Lodestar::Master {
             //     unlink(sockaddr.sun_path);
             // }
 
-            //TODO: finish constructor
+            // TODO: finish constructor
             // Master(std::string sockPath){
             //     sockfd = socket(AF_LOCAL, SOCK_DGRAM, 0);
             //     if(sockfd < 0)
@@ -126,7 +126,7 @@ namespace Lodestar::Master {
                 return topic;
             }
 
-            //TODO: also insert topic into node on nodeArray
+            // TODO: also insert topic into node on nodeArray
             void registerToTopic(std::string path, std::string registrarType, int nodeSocket, std::string address){
                 std::vector<std::string> tokenizedPath = tokenizeTopicStr(path);
                 std::string topicName = tokenizedPath.back();
