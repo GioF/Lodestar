@@ -3,7 +3,12 @@
 
 // TODO: extract string copying into separate function
 
+//cast char into enum
+//msgtype type = static_cast<msgtype>(buffer[0]);
+
 namespace Lodestar {
+    enum msgtype: uint8_t{authNode, topicReg, topicUpd, shutdwn};
+
     struct registration {
         uint8_t type;        ///< type of registration; 0 for insertion into topic, 1 for deletion
         uint8_t topicType;   ///< type of topic; 0 for pub, 1 for sub
@@ -149,11 +154,115 @@ namespace Lodestar {
         uint8_t code; ///< code of shutdown, denoting reason for it.
     };
 
-    char serializeShutdown(uint8_t code){
-        return (char)code;
+    void serializeShutdown(char* buffer, shutdown data){
+        buffer[0] = data.code;
     }
 
-    uint8_t deserializeShutdown(char buf){
-        return (uint8_t)buf;
+    shutdown deserializeShutdown(char* buffer){
+        shutdown data;
+        data.code = buffer[0];
+        return data;
+    }
+
+    struct auth {
+        int8_t size;        ///< negative for size of session id, positive for size of master password
+        char* identifier;    ///< either password or session id; see size
+    };
+
+    void serializeAuth(char* buffer, auth data){
+        uint8_t i, size;
+        int offset;
+
+        buffer[0] = data.size;
+        (data.size < 0)?
+            size = -data.size:
+            size = data.size;
+
+        offset = 1;
+        for(i = offset; i - offset < size; i++){
+            buffer[i] = data.identifier[i - offset];
+        }
+    }
+
+    auth deserializeAuth(char* buffer){
+        uint8_t i, size;
+        auth data;
+        data.size = buffer[0];
+            data.identifier = new char[128];
+
+        (data.size < 0)?
+            size = -data.size:
+            size = data.size;
+        
+        int offset = 1;
+        for(i = offset; i - offset < size; i++){
+            data.identifier[i - offset] = buffer[i];
+        }
+
+        return data;
+    }
+
+    struct commonMessage {
+        msgtype type;
+        union {
+            registration* registration;
+            topicUpdate* topicUpdate;
+            shutdown* shutdown;
+            auth* auth;
+        } data;
+    };
+
+    /**
+     * Serializes a message.
+     *
+     * Based on message type, the data pointer is casted into the respective struct to be used
+     * as such, and then passed into the second argument of the respective function.
+     *
+     * @param[in] msg a pointer to the struct that represents the message.
+     * @param[out] buffer the buffer data will be serialized to.
+     * */
+    void serializeMessage(commonMessage* msg, char* buffer){
+        buffer[0] = msg->type;
+        switch (msg->type){ 
+            case msgtype::authNode:
+                serializeAuth(&buffer[1], *(msg->data.auth));
+            case msgtype::topicReg:
+                serializeRegistration(&buffer[1], *(msg->data.registration));
+            case msgtype::topicUpd:
+                serializeUpdate(&buffer[1], *(msg->data.topicUpdate));
+            case msgtype::shutdwn:
+                serializeShutdown(&buffer[1], *(msg->data.shutdown));
+        }
+    }
+
+    /**
+     * Deserialize a message.
+     *
+     * The returned struct's message type will be set to the correct enum.
+     *
+     * @param[in] buffer the buffer containing the serialized message.
+     * @returns a pointer to the deserialized message.
+     * */
+    commonMessage* deserializeMessage(char* buffer){
+        commonMessage* msg;
+        msg->type = static_cast<msgtype>(buffer[0]);
+        switch (msg->type){ 
+            case msgtype::authNode:
+                msg->data.auth = new auth;
+                *(msg->data.auth) = deserializeAuth(&buffer[1]);
+                return msg;
+            case msgtype::topicReg:
+                msg->data.registration = new registration;
+                *(msg->data.registration) = deserializeRegistration(&buffer[1]);
+                return msg;
+            case msgtype::topicUpd:
+                msg->data.topicUpdate = new topicUpdate;
+                *(msg->data.topicUpdate) = deserializeUpdate(&buffer[1]);
+                return msg;
+            case msgtype::shutdwn:
+                msg->data.shutdown = new shutdown;
+                *(msg->data.shutdown) = deserializeShutdown(&buffer[1]);
+                return msg;
+        }
     }
 }
