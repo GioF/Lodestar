@@ -3,7 +3,7 @@
 #include "doctest.h"
 #include <cstdlib>
 
-TEST_CASE("Node registration protocol"){
+TEST_CASE("Node registration message"){
     Lodestar::registration dummyStruct;
 
     dummyStruct.type = 0;
@@ -34,7 +34,7 @@ TEST_CASE("Node registration protocol"){
     CHECK(dummyRegistrarString == deserializedRegistrarString);
 }
 
-TEST_CASE("Node update protocol"){
+TEST_CASE("Node update message"){
     Lodestar::topicUpdate dummyStruct;
 
     dummyStruct.type = 0;
@@ -61,4 +61,22 @@ TEST_CASE("Node update protocol"){
     CHECK(dummyRegistrarString == deserializedRegistrarString);
     CHECK(dummyStruct.addressLen == deserialized.addressLen);
     CHECK(dummyAddrString == deserializedAddrString);
+}
+
+TEST_CASE("Node authentication message"){
+    Lodestar::auth dummyStruct;
+
+    char testIdentifier[] = "samplepasswd";
+    dummyStruct.identifier = testIdentifier;
+    dummyStruct.size = 13;
+
+    char* buffer = (char*)std::malloc(1024);
+    Lodestar::serializeAuth(buffer, dummyStruct);
+    Lodestar::auth deserialized = Lodestar::deserializeAuth(buffer);
+
+    std::string dummyIdentifier = dummyStruct.identifier;
+    std::string deserializedIdentifier = deserialized.identifier;
+    
+    CHECK(dummyStruct.size == deserialized.size);
+    CHECK(dummyIdentifier == deserializedIdentifier);
 }
