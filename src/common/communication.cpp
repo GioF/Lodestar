@@ -39,10 +39,10 @@ namespace Lodestar {
             buffer[i] = data.name[i - offset];
         }
 
-        buffer[i + 1] = data.registrarLen;
-        buffer[i + 2] = data.registrarLen >> 8;
+        buffer[i] = data.registrarLen;
+        buffer[i + 1] = data.registrarLen >> 8;
 
-        offset = i + 3;
+        offset = i + 2;
         for(j = offset; j - offset < data.registrarLen; j++){
             buffer[j] = data.registrarName[j - offset];
         }
@@ -72,9 +72,9 @@ namespace Lodestar {
             data.name[i - offset] = buffer[i];
         }
 
-        std::memcpy((char*)&(data.registrarLen), &buffer[i + 1], sizeof(uint16_t));
+        std::memcpy((char*)&(data.registrarLen), &buffer[i], sizeof(uint16_t));
         
-        offset = i + 3;
+        offset = i + 2;
         for(j = offset; j - offset < data.registrarLen; j++){
             data.registrarName[j - offset] = buffer[j];
         }
@@ -109,10 +109,10 @@ namespace Lodestar {
             buffer[i] = update.registrarName[i - offset];
         }
 
-        buffer[i + 1] = update.addressLen;
-        buffer[i + 2] = update.addressLen >> 8;
+        buffer[i] = update.addressLen;
+        buffer[i + 1] = update.addressLen >> 8;
 
-        offset = i + 3;
+        offset = i + 2;
         for(j = offset; j - offset < update.addressLen; j++){
             buffer[j] = update.address[j - offset];
         }
@@ -120,7 +120,7 @@ namespace Lodestar {
 
     /**
      * Deserialize update.
-     *
+     * 
      * @param[in] buffer Buffer to be unserialized.
      *
      * @returns unserialized data.
@@ -140,9 +140,9 @@ namespace Lodestar {
             data.registrarName[i - offset] = buffer[i];
         }
         
-        std::memcpy((char*)&(data.addressLen), &buffer[i + 1], sizeof(uint16_t));
+        std::memcpy((char*)&(data.addressLen), &buffer[i], sizeof(uint16_t));
 
-        offset = i + 3;
+        offset = i + 2;
         for(j = offset; j - offset < data.addressLen; j++){
             data.address[j - offset] = buffer[j];
         }
