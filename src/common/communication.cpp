@@ -1,8 +1,7 @@
 #include <cstdint>
 #include <cstring>
 
-// TODO: extract string copying into separate function
-// TODO: make serialization functions return written bytes
+// NOTE: maybe should extract string copying into separate function
 
 namespace Lodestar {
     enum msgtype: uint8_t{authNode, topicReg, topicUpd, shutdwn};
@@ -20,9 +19,11 @@ namespace Lodestar {
      * Serialize registration.
      *
      * @param[out] buffer The buffer data is serialized into. 
-     * @param[in] data The registration struct to be serialized. 
+     * @param[in] data The registration struct to be serialized.
+     * 
+     * @returns amount of bytes written.
      * */
-    void serializeRegistration(char* buffer, registration data){
+    int serializeRegistration(char* buffer, registration data){
         uint16_t i, j; // two iterators for the two variable size strings
         int offset;
         
@@ -44,6 +45,7 @@ namespace Lodestar {
         for(j = offset; j - offset < data.registrarLen; j++){
             buffer[j] = data.registrarName[j - offset];
         }
+        return j;
     }
 
     /**
@@ -93,8 +95,10 @@ namespace Lodestar {
      *
      * @param[out] buffer The buffer data is serialized into.
      * @param[in] update The topicUpdate struct to be serialized.
+     * 
+     * @returns amount of bytes written.
      * */
-    void serializeUpdate(char* buffer, topicUpdate update){
+    int serializeUpdate(char* buffer, topicUpdate update){
         uint16_t i, j;
         int offset;
 
@@ -114,6 +118,8 @@ namespace Lodestar {
         for(j = offset; j - offset < update.addressLen; j++){
             buffer[j] = update.address[j - offset];
         }
+
+        return j;
     }
 
     /**
@@ -152,8 +158,9 @@ namespace Lodestar {
         uint8_t code; ///< code of shutdown, denoting reason for it.
     };
 
-    void serializeShutdown(char* buffer, shutdown data){
+    int serializeShutdown(char* buffer, shutdown data){
         buffer[0] = data.code;
+        return 1;
     }
 
     shutdown deserializeShutdown(char* buffer){
@@ -167,7 +174,7 @@ namespace Lodestar {
         char* identifier;    ///< either password or session id; see size
     };
 
-    void serializeAuth(char* buffer, auth data){
+    int serializeAuth(char* buffer, auth data){
         uint8_t i, size;
         int offset;
 
@@ -180,6 +187,8 @@ namespace Lodestar {
         for(i = offset; i - offset < size; i++){
             buffer[i] = data.identifier[i - offset];
         }
+
+        return i;
     }
 
     auth deserializeAuth(char* buffer){
@@ -218,19 +227,27 @@ namespace Lodestar {
      *
      * @param[in] msg a pointer to the struct that represents the message.
      * @param[out] buffer the buffer data will be serialized to.
+     * 
+     * @returns amount of bytes written.
      * */
-    void serializeMessage(commonMessage* msg, char* buffer){
+    int serializeMessage(commonMessage* msg, char* buffer){
+        int size = 1;
         buffer[0] = msg->type;
         switch (msg->type){ 
             case msgtype::authNode:
-                serializeAuth(&buffer[1], *(msg->data.authNodeMsg));
+                size += serializeAuth(&buffer[1], *(msg->data.authNodeMsg));
+                 break;
             case msgtype::topicReg:
-                serializeRegistration(&buffer[1], *(msg->data.topicRegMsg));
+                size += serializeRegistration(&buffer[1], *(msg->data.topicRegMsg));
+                 break;
             case msgtype::topicUpd:
-                serializeUpdate(&buffer[1], *(msg->data.topicUpdMsg));
+                size += serializeUpdate(&buffer[1], *(msg->data.topicUpdMsg));
+                 break;
             case msgtype::shutdwn:
-                serializeShutdown(&buffer[1], *(msg->data.shutdwnMsg));
+                size += serializeShutdown(&buffer[1], *(msg->data.shutdwnMsg));
+                break;
         }
+        return size;
     }
 
     /**
