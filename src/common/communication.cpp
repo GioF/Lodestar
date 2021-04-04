@@ -205,10 +205,10 @@ namespace Lodestar {
     struct commonMessage {
         msgtype type;
         union {
-            registration* registration;
-            topicUpdate* topicUpdate;
-            shutdown* shutdown;
-            auth* auth;
+            registration* topicRegMsg;
+            topicUpdate* topicUpdMsg;
+            shutdown* shutdwnMsg;
+            auth* authNodeMsg;
         } data;
     };
 
@@ -225,13 +225,13 @@ namespace Lodestar {
         buffer[0] = msg->type;
         switch (msg->type){ 
             case msgtype::authNode:
-                serializeAuth(&buffer[1], *(msg->data.auth));
+                serializeAuth(&buffer[1], *(msg->data.authNodeMsg));
             case msgtype::topicReg:
-                serializeRegistration(&buffer[1], *(msg->data.registration));
+                serializeRegistration(&buffer[1], *(msg->data.topicRegMsg));
             case msgtype::topicUpd:
-                serializeUpdate(&buffer[1], *(msg->data.topicUpdate));
+                serializeUpdate(&buffer[1], *(msg->data.topicUpdMsg));
             case msgtype::shutdwn:
-                serializeShutdown(&buffer[1], *(msg->data.shutdown));
+                serializeShutdown(&buffer[1], *(msg->data.shutdwnMsg));
         }
     }
 
@@ -248,21 +248,23 @@ namespace Lodestar {
         msg->type = static_cast<msgtype>(buffer[0]);
         switch (msg->type){ 
             case msgtype::authNode:
-                msg->data.auth = new auth;
-                *(msg->data.auth) = deserializeAuth(&buffer[1]);
+                msg->data.authNodeMsg = new auth;
+                *(msg->data.authNodeMsg) = deserializeAuth(&buffer[1]);
                 return msg;
             case msgtype::topicReg:
-                msg->data.registration = new registration;
-                *(msg->data.registration) = deserializeRegistration(&buffer[1]);
+                msg->data.topicRegMsg = new registration;
+                *(msg->data.topicRegMsg) = deserializeRegistration(&buffer[1]);
                 return msg;
             case msgtype::topicUpd:
-                msg->data.topicUpdate = new topicUpdate;
-                *(msg->data.topicUpdate) = deserializeUpdate(&buffer[1]);
+                msg->data.topicUpdMsg = new topicUpdate;
+                *(msg->data.topicUpdMsg) = deserializeUpdate(&buffer[1]);
                 return msg;
             case msgtype::shutdwn:
-                msg->data.shutdown = new shutdown;
-                *(msg->data.shutdown) = deserializeShutdown(&buffer[1]);
+                msg->data.shutdwnMsg = new shutdown;
+                *(msg->data.shutdwnMsg) = deserializeShutdown(&buffer[1]);
                 return msg;
+            default:
+                return NULL;
         }
     }
 }
