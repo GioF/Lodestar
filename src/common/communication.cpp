@@ -2,9 +2,7 @@
 #include <cstring>
 
 // TODO: extract string copying into separate function
-
-//cast char into enum
-//msgtype type = static_cast<msgtype>(buffer[0]);
+// TODO: make serialization functions return written bytes
 
 namespace Lodestar {
     enum msgtype: uint8_t{authNode, topicReg, topicUpd, shutdwn};
