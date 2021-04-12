@@ -21,7 +21,7 @@ namespace Lodestar{
         public:
 
             /**
-             * A struct that represent nodes which register to topics.
+             * A struct that represents nodes which register to topics.
              * */
             struct registrar {
                 std::string address;  ///< string used by the node to identify an instance of a publisher/subscriber.*/
