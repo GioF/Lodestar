@@ -7,7 +7,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
-#include "../node/nodeMsg.h"
+#include "../common/communication.cpp"
 #include "../common/types.h"
 
 namespace Lodestar{
