@@ -1,3 +1,6 @@
+#ifndef LODECOMM_H
+#define LODECOMM_H
+
 #include <cstdint>
 #include <cstring>
 
@@ -283,3 +286,5 @@ namespace Lodestar {
         }
     }
 }
+
+#endif

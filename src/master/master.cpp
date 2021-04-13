@@ -4,6 +4,10 @@
 #include <vector>
 #include <string>
 #include <cstring>
+#include <mutex>
+#include <thread>
+#include <iostream>
+#include <sys/poll.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -63,30 +67,52 @@ namespace Lodestar{
                 std::vector<topicTreeRef> subscribers; ///< vector of topics the node subscribes to.
             };
 
-            // ~Master(){
-            //     close(sockfd);
-            //     unlink(sockaddr.sun_path);
-            // }
+            ~Master(){
+                if(listeningThread && listeningThread->joinable()){
+                    isOk = false;
+                    listeningThread->join();
+                }
+                close(sockfd);
+                unlink(sockaddr.sun_path);
+            }
 
-            // TODO: finish constructor
-            // Master(std::string sockPath){
-            //     sockfd = socket(AF_LOCAL, SOCK_DGRAM, 0);
-            //     if(sockfd < 0)
-            //         throw "Error creating socket";
+            /**
+             * Starts the listener thread using sockPath as the path.
+             *
+             * @param sockPath the desired path to be used with the socket
+             * */
+            Master(std::string sockPath){
+                sockfd = socket(AF_LOCAL, SOCK_STREAM, 0);
+                if(sockfd < 0)
+                    throw "Error creating socket";
 
-            //     sockaddr.sun_family = AF_LOCAL;
-            //     std::strcpy(sockaddr.sun_path, sockPath.c_str());
+                sockaddr.sun_family = AF_LOCAL;
+                std::strcpy(sockaddr.sun_path, sockPath.c_str());
 
-            //     if(bind(sockfd, (struct sockaddr *) &sockaddr, sizeof(sockaddr_un))){
-            //         throw "Error binding socket";
-            //     };
-            // }
+                if(bind(sockfd, (struct sockaddr *) &sockaddr, sizeof(sockaddr_un))){
+                    throw "Error binding socket";
+                };
+
+                listen(sockfd, 10);
+                listeningThread = new std::thread(&Master::listenForNodes, this, sockfd);
+            }
+
+            Master(){
+                // TODO: function should read config files for default
+                // socket path and call Master(std::string sockpath)
+                // with said path
+            };
 
         private:
+            bool isOk = true;     ///< variable that tracks if class is shutting down
             int sockfd;           ///< master listening socket file descriptor.
             sockaddr_un sockaddr;
             char buffer[1024];    ///< buffer that the listening socket uses.
 
+            std::thread *listeningThread = NULL; ///< pointer to listener thread
+            std::vector<int> authQueue;         ///< queue of sockets awaiting authentication
+            std::mutex queueLock;
+            
             topicTreeNode* rootNode = new topicTreeNode; ///< tree of directories and topics.
             std::vector<node> nodeArray;                 ///< array of nodes connected to this master.
 
@@ -197,6 +223,43 @@ namespace Lodestar{
                     topic->publishers.push_back(registrar {address, nodeSocket}):
                     topic->subscribers.push_back(registrar {address, nodeSocket});
             }
+
+            /**
+             * Listener thread function.
+             *
+             * Will listen for connections on sockfd and when connected, the new file descriptor will
+             * be sent to the authentication queue.
+             * 
+             * @param sockfd the listening socket.
+             * */
+            void listenForNodes(int sockfd){
+                // polling could be used on the future to multiplex AF_UNIX and AF_INET sockets on this function
+                sockaddr_un inSockaddr;
+                int newSockfd = 1; ///< set newSockfd to a positive number for error checking
+                int rv;            ///< return value of poll
+                socklen_t addrlen;
+
+                struct pollfd pfd;
+                pfd.fd = sockfd;
+                pfd.events = POLLIN;
+
+                //simply accept all inbound connections and push them to authentication queue
+                //(while socket exists)
+                while(isOk && (newSockfd != EBADF || newSockfd != ENOTSOCK)){
+                    rv = poll(&pfd, 1, (0.5 * 1000));
+
+                    if(rv > 0){
+                        newSockfd = accept(sockfd, (struct sockaddr *)&inSockaddr, &addrlen);
+                        queueLock.lock();
+                        authQueue.push_back(newSockfd);
+                        queueLock.unlock();
+                    }
+                    if(rv < 0){
+                        // TODO: proper error logging
+                        std::cout << "error while polling: " << rv;
+                    }
+                }
+            };
     };
 }
 

@@ -6,30 +6,50 @@
 namespace Lodestar{
     class Master_test: Master{
         public:
-            Master master;
-            topicTreeNode* rootNode = master.rootNode;
+            Master_test(std::string sockPath): Master(){
+                master = new Master(sockPath);
+                rootNode = master->rootNode;
+            };
+
+            Master_test(){
+                master = new Master();
+                rootNode = master->rootNode;
+            }
+
+            ~Master_test(){
+                delete master;
+                delete rootNode;
+            };
+            
+            Master *master = NULL;
+            topicTreeNode* rootNode = NULL;
 
             std::vector<std::string> tokenizeTopicStr(std::string path){
-                return master.tokenizeTopicStr(path);
+                return master->tokenizeTopicStr(path);
             };
 
             topicTreeNode* getDir(std::vector<std::string> dirPath){
-                return master.getDir(dirPath);
+                return master->getDir(dirPath);
             };
 
             topicTreeNode* getTopic(topicTreeNode* dir, std::string topicName){
-                return master.getTopic(dir, topicName);
+                return master->getTopic(dir, topicName);
             };
 
             void registerToTopic(std::string path, std::string registrarType, int nodeSocket, std::string address){
-                return master.registerToTopic(path, registrarType, nodeSocket, address);
+                return master->registerToTopic(path, registrarType, nodeSocket, address);
             };
             
     };
 }
 
 TEST_CASE("Master"){
-    Lodestar::Master_test master;
+    std::string socketPath = std::string(getenv("HOME"));
+    socketPath.append("/.local/share/lodestar/mastersocket");
+
+    // NOTE: should call constructor which does not set up
+    // a listener socket so it can be tested separately
+    Lodestar::Master_test master(socketPath);
 
     std::string path = "dir1/dir2/lastdir";
     Lodestar::Master::topicTreeNode dir1;
