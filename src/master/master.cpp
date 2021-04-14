@@ -77,11 +77,36 @@ namespace Lodestar{
             }
 
             /**
-             * Starts the listener thread using sockPath as the path.
+             * Constructor which also sets up the listener.
              *
              * @param sockPath the desired path to be used with the socket
              * */
             Master(std::string sockPath){
+                setupListener(sockPath);
+            }
+
+            /**
+             * Constructor which starts the listener with default values conditionally.
+             *
+             * @param startNode boolean that informs constructor if listener should be started.
+             * */
+            Master(bool startListener = false){
+                // TODO: function should also read config files for default
+                // socket path and call Master(std::string sockpath)
+                // with said path
+                if(startListener){
+                    std::string socketPath = std::string(getenv("HOME"));
+                    socketPath.append("/.local/share/lodestar/mastersocket");
+                    setupListener(socketPath);
+                }
+            };
+
+            /**
+             * Starts the listener thread using sockPath as the path.
+             *
+             * @param sockPath the desired path to be used with the socket
+             * */
+            void setupListener(std::string sockPath){
                 sockfd = socket(AF_LOCAL, SOCK_STREAM, 0);
                 if(sockfd < 0)
                     throw "Error creating socket";
@@ -95,12 +120,6 @@ namespace Lodestar{
 
                 listen(sockfd, 10);
                 listeningThread = new std::thread(&Master::listenForNodes, this, sockfd);
-            }
-
-            Master(){
-                // TODO: function should read config files for default
-                // socket path and call Master(std::string sockpath)
-                // with said path
             };
 
         private:

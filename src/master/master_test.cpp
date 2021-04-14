@@ -44,12 +44,7 @@ namespace Lodestar{
 }
 
 TEST_CASE("Master - business logic"){
-    std::string socketPath = std::string(getenv("HOME"));
-    socketPath.append("/.local/share/lodestar/mastersocket");
-
-    // NOTE: should call constructor which does not set up
-    // a listener socket so it can be tested separately
-    Lodestar::Master_test master(socketPath);
+    Lodestar::Master_test master;
 
     std::string path = "dir1/dir2/lastdir";
     Lodestar::Master::topicTreeNode dir1;
