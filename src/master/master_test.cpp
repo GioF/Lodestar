@@ -43,7 +43,7 @@ namespace Lodestar{
     };
 }
 
-TEST_CASE("Master"){
+TEST_CASE("Master - business logic"){
     std::string socketPath = std::string(getenv("HOME"));
     socketPath.append("/.local/share/lodestar/mastersocket");
 
