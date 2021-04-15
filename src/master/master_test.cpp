@@ -168,12 +168,16 @@ TEST_CASE("Master - business logic"){
     }
 }
 
+// NOTE: should test non-local networking since host info can be gotten from both sides
 TEST_CASE("Master - local networking"){
     std::string socketPath = std::string(getenv("PWD"));
     socketPath.append("/listener.socket");
 
     Lodestar::Master_test master(socketPath);
 
+    // NOTE: if this fails, try to raise the time this thread sleeps
+    // in order to give more time for the listener thread to receive the
+    // connection before the test sets isOk to false
     SUBCASE("listenForNodes - add to queue"){
         sockaddr_un testSockaddr;
         testSockaddr.sun_family = AF_LOCAL;
@@ -184,7 +188,7 @@ TEST_CASE("Master - local networking"){
         CHECK(testSockfd > 0);
 
         // HACK: this is horrible, need to find a better method to wait for thread to be ok
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
         int rc = connect(testSockfd, (struct sockaddr*) &testSockaddr, sizeof(sockaddr_un));
 
         *(master.isOk) = false;
@@ -193,5 +197,6 @@ TEST_CASE("Master - local networking"){
 
         REQUIRE(rc == 0);
         REQUIRE(master.authQueue->size() == 1);
+        REQUIRE(master.authQueue->at(0) > 0);
     }
 }

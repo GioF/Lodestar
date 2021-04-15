@@ -255,9 +255,9 @@ namespace Lodestar{
             void listenForNodes(int sockfd){
                 // polling could be used on the future to multiplex AF_UNIX and AF_INET sockets on this function
                 sockaddr_un inSockaddr;
-                int newSockfd = 1; ///< set newSockfd to a positive number for error checking
-                int rv;            ///< return value of poll
-                socklen_t addrlen;
+                int newSockfd = 0; ///< set newSockfd to a positive number for error checking
+                int rv;
+                socklen_t addrlen = sizeof(struct sockaddr_un);
 
                 struct pollfd pfd;
                 pfd.fd = sockfd;
