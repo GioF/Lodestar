@@ -123,6 +123,7 @@ namespace Lodestar{
             };
 
         private:
+            // TODO: tidy up following horribleness
             bool isOk = true;     ///< variable that tracks if class is shutting down
             int sockfd;           ///< master listening socket file descriptor.
             sockaddr_un sockaddr;

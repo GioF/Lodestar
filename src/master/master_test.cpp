@@ -2,18 +2,21 @@
 #include "master.cpp"
 #include "../common/doctest.h"
 #include "../common/types.h"
+#include <sys/socket.h>
+#include <chrono>
 
 namespace Lodestar{
     class Master_test: Master{
         public:
             Master_test(std::string sockPath): Master(){
                 master = new Master(sockPath);
-                rootNode = master->rootNode;
+                setupPointers();
             };
 
             Master_test(){
                 master = new Master();
                 rootNode = master->rootNode;
+                setupPointers();
             }
 
             ~Master_test(){
@@ -24,6 +27,22 @@ namespace Lodestar{
             Master *master = NULL;
             topicTreeNode* rootNode = NULL;
 
+            //threading variables
+            bool* isOk;
+            int* sockfd;
+            sockaddr_un* sockaddr;
+            std::thread *listeningThread = NULL;
+            std::vector<int>* authQueue = NULL;
+
+            void setupPointers(){
+                rootNode = master->rootNode;
+                authQueue = &(master->authQueue);
+                isOk = &(master->isOk);
+                sockfd = &(master->sockfd);
+                sockaddr = &(master->sockaddr);
+            };
+            
+            //mirroed(?) master class private methods
             std::vector<std::string> tokenizeTopicStr(std::string path){
                 return master->tokenizeTopicStr(path);
             };
@@ -39,6 +58,10 @@ namespace Lodestar{
             void registerToTopic(std::string path, std::string registrarType, int nodeSocket, std::string address){
                 return master->registerToTopic(path, registrarType, nodeSocket, address);
             };
+
+            void attachListener(){
+                listeningThread = master->listeningThread;
+            }
             
     };
 }
@@ -142,5 +165,33 @@ TEST_CASE("Master - business logic"){
             REQUIRE(registrar->address == address);
             REQUIRE(registrar->nodeSocketFd == nodeSocket);
         }
+    }
+}
+
+TEST_CASE("Master - local networking"){
+    std::string socketPath = std::string(getenv("PWD"));
+    socketPath.append("/listener.socket");
+
+    Lodestar::Master_test master(socketPath);
+
+    SUBCASE("listenForNodes - add to queue"){
+        sockaddr_un testSockaddr;
+        testSockaddr.sun_family = AF_LOCAL;
+        std::strcpy(testSockaddr.sun_path, "listener.socket");
+
+        int testSockfd = socket(AF_LOCAL, SOCK_STREAM, 0);
+
+        CHECK(testSockfd > 0);
+
+        // HACK: this is horrible, need to find a better method to wait for thread to be ok
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        int rc = connect(testSockfd, (struct sockaddr*) &testSockaddr, sizeof(sockaddr_un));
+
+        *(master.isOk) = false;
+        master.attachListener();
+        master.listeningThread->join();
+
+        REQUIRE(rc == 0);
+        REQUIRE(master.authQueue->size() == 1);
     }
 }
