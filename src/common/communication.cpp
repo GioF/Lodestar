@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <sys/socket.h>
 
 // NOTE: maybe should extract string copying into separate function
 
@@ -233,8 +234,8 @@ namespace Lodestar {
      * 
      * @returns amount of bytes written.
      * */
-    int serializeMessage(commonMessage* msg, char* buffer){
-        int size = 1;
+    uint16_t serializeMessage(commonMessage* msg, char* buffer){
+        uint16_t size = 1;
         buffer[0] = msg->type;
         switch (msg->type){ 
             case msgtype::authNode:
@@ -261,29 +262,79 @@ namespace Lodestar {
      * @param[in] buffer the buffer containing the serialized message.
      * @returns a pointer to the deserialized message.
      * */
-    commonMessage* deserializeMessage(char* buffer){
-        commonMessage* msg;
-        msg->type = static_cast<msgtype>(buffer[0]);
-        switch (msg->type){ 
+    commonMessage deserializeMessage(char* buffer){
+        commonMessage msg;
+        msg.type = static_cast<msgtype>(buffer[0]);
+        switch (msg.type){ 
             case msgtype::authNode:
-                msg->data.authNodeMsg = new auth;
-                *(msg->data.authNodeMsg) = deserializeAuth(&buffer[1]);
+                msg.data.authNodeMsg = new auth;
+                *(msg.data.authNodeMsg) = deserializeAuth(&buffer[1]);
                 return msg;
             case msgtype::topicReg:
-                msg->data.topicRegMsg = new registration;
-                *(msg->data.topicRegMsg) = deserializeRegistration(&buffer[1]);
+                msg.data.topicRegMsg = new registration;
+                *(msg.data.topicRegMsg) = deserializeRegistration(&buffer[1]);
                 return msg;
             case msgtype::topicUpd:
-                msg->data.topicUpdMsg = new topicUpdate;
-                *(msg->data.topicUpdMsg) = deserializeUpdate(&buffer[1]);
+                msg.data.topicUpdMsg = new topicUpdate;
+                *(msg.data.topicUpdMsg) = deserializeUpdate(&buffer[1]);
                 return msg;
             case msgtype::shutdwn:
-                msg->data.shutdwnMsg = new shutdown;
-                *(msg->data.shutdwnMsg) = deserializeShutdown(&buffer[1]);
+                msg.data.shutdwnMsg = new shutdown;
+                *(msg.data.shutdwnMsg) = deserializeShutdown(&buffer[1]);
                 return msg;
             default:
-                return NULL;
+                throw "Unknown message type";
         }
+    }
+
+    /**
+     * Serializes a message and sends it all.
+     *
+     * Will assure all bytes of message are sent, so it's best to use this function asynchronously.
+     *
+     * @param msg a message struct.
+     * @param sockfd the socket the message is to be sent.
+     * @returns amounts of sent bytes, -1 on error
+     * */
+    int sendMessage(commonMessage msg, int sockfd){
+        char buffer[1024];
+        uint16_t size = serializeMessage(&msg, &buffer[2]);
+        buffer[0] = size;
+        buffer[1] = size >> 8;
+
+        int sent = 0;
+
+        while(sent < size + 2 || sent == -1){
+            sent = sent + send(sockfd, &buffer[sent], (size + 2) - sent, 0);
+        }
+        return sent;
+    }
+
+    /**
+     * Receives a message.
+     *
+     * Will assure message is completely received and will block until so, so use this function
+     * asynchronously.
+     *
+     * @param sockfd the socket in which the message will be received from.
+     * @returns a pointer to the received message.
+     * */
+    commonMessage recvMessage(int sockfd){
+        char buffer[1024];
+        uint16_t size = 0;
+        int received = 0;
+        recv(sockfd, buffer, 2, 0);
+        
+        std::memcpy((char*)&(size), buffer, sizeof(uint16_t));
+
+        while(size > 0 && received != -1){
+            received = recv(sockfd, &buffer[received + 2], size, 0);
+            size = size - received;
+        }
+
+        commonMessage receivedMessage = deserializeMessage(buffer + 2);
+
+        return receivedMessage;
     }
 }
 
