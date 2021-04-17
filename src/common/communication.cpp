@@ -317,7 +317,7 @@ namespace Lodestar {
      * asynchronously.
      *
      * @param sockfd the socket in which the message will be received from.
-     * @returns a pointer to the received message.
+     * @returns the received message.
      * */
     commonMessage recvMessage(int sockfd){
         char buffer[1024];

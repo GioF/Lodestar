@@ -127,7 +127,6 @@ namespace Lodestar{
             bool isOk = true;     ///< variable that tracks if class is shutting down
             int sockfd;           ///< master listening socket file descriptor.
             sockaddr_un sockaddr;
-            char buffer[1024];    ///< buffer that the listening socket uses.
 
             std::thread *listeningThread = NULL; ///< pointer to listener thread
             std::vector<int> authQueue;         ///< queue of sockets awaiting authentication
