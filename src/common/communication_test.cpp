@@ -9,22 +9,20 @@
 #include <string>
 #include <sys/un.h>
 
-void receiveMsgfn(int sockfd, Lodestar::commonMessage* commonMsg){
-
+void receiveMsgfn(int sockfd, Lodestar::message* msg){
     sockaddr_un inSockaddr;
     socklen_t addrlen = sizeof(struct sockaddr_un);
 
     listen(sockfd, 10);
     int connectedfd = accept(sockfd, (struct sockaddr *)&inSockaddr, &addrlen);
 
-    Lodestar::commonMessage received = Lodestar::recvMessage(connectedfd);
-    *commonMsg = received;
-    std::cout << "got here";
+    msg->recvMessage(connectedfd);
+    msg->deserializeMessage();
 }
 
-void transmitMsgfn(int sockfd, Lodestar::commonMessage msg, sockaddr_un addr){
+void transmitMsgfn(int sockfd, Lodestar::message* msg, sockaddr_un addr){
     connect(sockfd, (struct sockaddr*) &addr, sizeof(sockaddr_un));
-    sendMessage(msg, sockfd);
+    msg->sendMessage(sockfd);
 }
 
 TEST_CASE("registration - Node registration message"){
@@ -42,8 +40,10 @@ TEST_CASE("registration - Node registration message"){
     dummyStruct.registrarLen = 8;
 
     char* buffer = (char*)std::malloc(1024);
-    Lodestar::serializeRegistration(buffer, dummyStruct);
-    Lodestar::registration deserialized = Lodestar::deserializeRegistration(buffer);
+    dummyStruct.serialize(buffer);
+
+    Lodestar::registration deserialized;
+    deserialized.deserialize(buffer);
 
     std::string dummyNameString = dummyStruct.name;
     std::string dummyRegistrarString = dummyStruct.registrarName;
@@ -72,8 +72,10 @@ TEST_CASE("topicUpdate - Node update message"){
     dummyStruct.addressLen = 16;
 
     char* buffer = (char*)std::malloc(1024);
-    Lodestar::serializeUpdate(buffer, dummyStruct);
-    Lodestar::topicUpdate deserialized = Lodestar::deserializeUpdate(buffer);
+    dummyStruct.serialize(buffer);
+
+    Lodestar::topicUpdate deserialized;
+    deserialized.deserialize(buffer);
 
     std::string dummyRegistrarString = dummyStruct.registrarName;
     std::string dummyAddrString = dummyStruct.address;
@@ -95,8 +97,10 @@ TEST_CASE("auth - Node authentication message"){
     dummyStruct.size = 13;
 
     char* buffer = (char*)std::malloc(1024);
-    Lodestar::serializeAuth(buffer, dummyStruct);
-    Lodestar::auth deserialized = Lodestar::deserializeAuth(buffer);
+    dummyStruct.serialize(buffer);
+    
+    Lodestar::auth deserialized;
+    deserialized.deserialize(buffer);
 
     std::string dummyIdentifier = dummyStruct.identifier;
     std::string deserializedIdentifier = deserialized.identifier;
@@ -111,9 +115,9 @@ TEST_CASE("Common Message Transmission and reception"){
     char testIdentifier[] = "samplepasswd";
     dummyStruct.identifier = testIdentifier;
     dummyStruct.size = 13;
-    Lodestar::commonMessage dummyMsg;
-    dummyMsg.type = Lodestar::msgtype::authNode;
-    dummyMsg.data.authNodeMsg = &dummyStruct;
+    dummyStruct.dataType = Lodestar::msgtype::authNode;
+    Lodestar::message msg;
+    msg.data = &dummyStruct;
 
     //set up sockets
     int rc;
@@ -135,26 +139,29 @@ TEST_CASE("Common Message Transmission and reception"){
     REQUIRE(rc == 0);
 
     //set up thread that runs the receive part
-    Lodestar::commonMessage receivedMessage;
+    Lodestar::message receivedMessage;
     std::thread listeningThread = std::thread(&receiveMsgfn, rxfd, &receivedMessage);
     pthread_setname_np(listeningThread.native_handle(), "listener");
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
     //set up thread that runs the send part
-    std::thread sendingThread = std::thread(&transmitMsgfn, txfd, dummyMsg, txSockaddr);
+    std::thread sendingThread = std::thread(&transmitMsgfn, txfd, &msg, txSockaddr);
     pthread_setname_np(sendingThread.native_handle(), "sender");
 
     //wait for threads and unlink socket
-    sendingThread.join();
-    if(listeningThread.joinable()){ 
-        listeningThread.join();
+    listeningThread.join();
+    if(sendingThread.joinable()){ 
+        sendingThread.join();
     }
 
     unlink(rxSockaddr.sun_path);
 
-    REQUIRE(receivedMessage.data.authNodeMsg->size == dummyMsg.data.authNodeMsg->size);
+    Lodestar::auth* received = dynamic_cast<Lodestar::auth*>(receivedMessage.data);
+    Lodestar::auth* sent = dynamic_cast<Lodestar::auth*>(msg.data);
+
+    REQUIRE(received->size == sent->size);
     //get strings from the char arrays and then compare them
-    std::string dummyString = std::string(dummyMsg.data.authNodeMsg->identifier);
-    std::string receivedString = std::string(receivedMessage.data.authNodeMsg->identifier);
+    std::string dummyString = std::string(sent->identifier);
+    std::string receivedString = std::string(received->identifier);
     REQUIRE(dummyString == receivedString);
 }
