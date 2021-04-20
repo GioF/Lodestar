@@ -280,33 +280,7 @@ namespace Lodestar {
          * @returns the received message.
          * */
         void recvMessage(int sockfd){
-            size = 2;
-            while(size > 0 && received != -1){
-                received = recv(sockfd, buffer, size, 0);
-                if(received == -1){
-                    if(errno == EAGAIN || errno == EWOULDBLOCK){
-                        continue;
-                    }else{
-                        throw "error while receiving";
-                    }
-                }
-                size = size - received;
-            }
-            
-            std::memcpy((char*)&(size), buffer, sizeof(uint16_t));
-
-            received = 0; ///< zeroing received after it has been used
-            while(size > 0 && received != -1){
-                received = recv(sockfd, &buffer[received + 2], size, 0);
-                if(received == -1){
-                    if(errno == EAGAIN || errno == EWOULDBLOCK){
-                        continue;
-                    }else{
-                        throw "error while receiving";
-                    }
-                }
-                size = size - received;
-            }
+            recvMessage_for(sockfd, std::chrono::minutes(1));
         }
         
         /**
@@ -325,10 +299,36 @@ namespace Lodestar {
          * @returns the status of the message.
          * */
         msgStatus recvMessage_for(int sockfd, std::chrono::microseconds time){
-            //set up amount to be received if not already
+            auto began = std::chrono::steady_clock::now();
+            auto timeout = std::chrono::steady_clock::now() + time;
+            auto now = std::chrono::steady_clock::now();
+
+            //read first 2 bytes and interprete them as size to be read
+            //(if not already reading a message)
             if(state == msgStatus::ok){
-                recv(sockfd, buffer, 2, 0);
+                size = 2;
+                while(size > 0 && now < timeout && received != -1){
+                    received = recv(sockfd, buffer, size, 0);
+                    now = std::chrono::steady_clock::now();
+
+                    if(received == -1){
+                        if(errno == EAGAIN || errno == EWOULDBLOCK){
+                            continue;
+                        }else{
+                            throw "error while receiving";
+                        }
+                    }
+                    size = size - received;
+                }
+
+                // TODO: proper error throwing
+                if(now > timeout + std::chrono::minutes(1)){
+                    throw "absolute time out";
+                }else if(now > timeout){
+                    throw "could not start receiving process";
+                }
                 std::memcpy((char*)&(size), buffer, sizeof(uint16_t));
+                received = 0;
             }
             
             //receive data, quitting loop if function timeout reached
