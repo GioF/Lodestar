@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <cstring>
 #include <chrono>
+#include <stdexcept>
+#include <tuple>
 #include <sys/socket.h>
 #include "types.h"
 #include <errno.h>
@@ -12,6 +14,22 @@
 
 namespace Lodestar {
 
+    //communication-specific exceptions
+    class timeoutException: public std::runtime_error{
+        public:
+            using std::runtime_error::runtime_error;
+
+            std::chrono::milliseconds timeout(){
+                return time;
+            }
+
+            timeoutException(std::chrono::milliseconds time, std::string message):time(time), std::runtime_error(message){}
+
+        private:
+            std::chrono::milliseconds time;
+    };
+
+    //basic message types
     struct registration: public transmittable{
         uint8_t type;        ///< type of registration; 0 for insertion into topic, 1 for deletion
         uint8_t topicType;   ///< type of topic; 0 for pub, 1 for sub
@@ -193,136 +211,185 @@ namespace Lodestar {
         }
     };
 
-
-    struct message{
-
-        transmittable* data = NULL;
-        msgStatus state = msgStatus::ok;
-        
-        /**
-         * Serializes a message.
-         *
-         * data.type goes into the first byte and the next byte is given as an argument
-         * to the serialization function of data.
-         *
-         * @param[out] buffer the buffer data will be serialized to.
-         * 
-         * @returns amount of bytes written.
-         * */
-        uint16_t serializeMessage(char* buffer){
-            uint16_t size = 1;
-            buffer[0] = data->dataType;
-            size += data->serialize(&buffer[1]);
-            return size;
-        }
-
-        /**
-         * Deserialize a message and put it into data.
-         *
-         * The function treats the data pointer as null, so if not vacant
-         * it's best to delete the object data points to.
-         *
-         * @param[in] buffer the buffer containing the serialized message.
-         * */
-        void deserializeMessage(char* lbuffer){
-            msgtype type = static_cast<msgtype>(lbuffer[0]);
-            switch (type){ 
-                case msgtype::authNode:
-                    data = new auth;
-                    data->deserialize(&lbuffer[1]);
-                    break;
-                case msgtype::topicReg:
-                    data = new registration;
-                    data->deserialize(&lbuffer[1]);
-                    break;
-                case msgtype::topicUpd:
-                    data = new topicUpdate;
-                    data->deserialize(&lbuffer[1]);
-                    break;
-                case msgtype::shutdwn:
-                    data = new shutdown;
-                    data->deserialize(&lbuffer[1]);
-                    break;
-                default:
-                    throw "Unknown message type";
-            }
-            data->dataType = type;
-        }
-
-        /**
-         * Deserialize this message's buffer into a message.
-         *
-         * Simply calls deserializeMessage(char* buffer) with this object's
-         * buffer as argument.
-         * */
-        void deserializeMessage(){
-            deserializeMessage(buffer + 2);
-        }
-
-        /**
-         * Serializes the data on the data pointer and sends it all at once.
-         *
-         * Will assure all bytes of message are sent, so it's best
-         * to use this function asynchronously.
-         *
-         * @param sockfd the socket the message is to be sent.
-         * @returns amounts of sent bytes, -1 on error
-         * */
-        int sendMessage(int sockfd){
-            size = serializeMessage(&buffer[2]);
-            buffer[0] = size;
-            buffer[1] = size >> 8;
+    class message{
+        public:
+            transmittable* data = NULL;      ///< pointer to an object that implements transmittable
+            msgStatus state = msgStatus::ok; ///< current state; see msgStatus
             
-            int sent = 0;
+            /**
+             * Serializes a message.
+             *
+             * data.type goes into the first byte and the next byte is given as an argument
+             * to the serialization function of data.
+             *
+             * @param[out] buffer the buffer data will be serialized to.
+             * 
+             * @returns amount of bytes written.
+             * */
+            uint16_t serializeMessage(char* buffer){
+                uint16_t size = 1;
+                buffer[0] = data->dataType;
+                size += data->serialize(&buffer[1]);
+                return size;
+            }
             
-            while(sent < size + 2 || sent == -1){
-                sent = sent + send(sockfd, &buffer[sent], (size + 2) - sent, 0);
+            /**
+             * Deserialize a message and put it into data.
+             *
+             * The function treats the data pointer as null, so if not vacant
+             * it's best to delete the object data points to.
+             *
+             * @param[in] buffer the buffer containing the serialized message.
+             * */
+            void deserializeMessage(char* lbuffer){
+                msgtype type = static_cast<msgtype>(lbuffer[0]);
+                switch (type){ 
+                    case msgtype::authNode:
+                        data = new auth;
+                        data->deserialize(&lbuffer[1]);
+                        break;
+                    case msgtype::topicReg:
+                        data = new registration;
+                        data->deserialize(&lbuffer[1]);
+                        break;
+                    case msgtype::topicUpd:
+                        data = new topicUpdate;
+                        data->deserialize(&lbuffer[1]);
+                        break;
+                    case msgtype::shutdwn:
+                        data = new shutdown;
+                        data->deserialize(&lbuffer[1]);
+                        break;
+                    default:
+                        throw "Unknown message type";
+                }
+                data->dataType = type;
+            }
+            
+            /**
+             * Deserialize this message's buffer into a message.
+             *
+             * Simply calls deserializeMessage(char* buffer) with this object's
+             * buffer as argument.
+             * */
+            void deserializeMessage(){
+                deserializeMessage(buffer + 2);
+            }
+            
+            /**
+             * Serializes the data on the data pointer and sends it all at once.
+             *
+             * Will assure all bytes of message are sent, so it's best
+             * to use this function asynchronously.
+             *
+             * @param sockfd the socket the message is to be sent.
+             * @returns amounts of sent bytes, -1 on error
+             * */
+            int sendMessage(int sockfd){
+                size = serializeMessage(&buffer[2]);
+                buffer[0] = size;
+                buffer[1] = size >> 8;
+                
+                int sent = 0;
+                
+                while(sent < size + 2 || sent == -1){
+                    sent = sent + send(sockfd, &buffer[sent], (size + 2) - sent, 0);
+                }
+                
+                return sent;
+            }
+            
+            /**
+             * Receives a message into a buffer to be serialized later.
+             *
+             * Will assure message is completely received and will block until so,
+             * so this function is better used asynchronously.
+             *
+             * @param sockfd the socket in which the message will be received from.
+             * @returns the received message.
+             * */
+            void recvMessage(int sockfd){
+                recvMessage_for(sockfd, std::chrono::minutes(1));
+            }
+            
+            /**
+             * Receives a message for [time] microseconds.
+             *
+             * To be used only with sockets which timeout, with a sane amount set such that
+             * the receive loop will not spin for too much and become a cpu hog or wait for
+             * so long that [time] microseconds has already elapsed and the function
+             * executed for too much time.
+             * Will not automatically deserialize data once it finishes receiving data.
+             * If the function runs for [time], a status of receiving is returned.
+             * If the function finalized receiving, a status of ok is returned.
+             *
+             * @param sockfd the socket in which the message will be received from.
+             * @param time the time which the function is to be executed for.
+             * @returns the status of the message.
+             * */
+            msgStatus recvMessage_for(int sockfd, std::chrono::milliseconds time){
+                auto began = std::chrono::steady_clock::now();
+                auto timeout = std::chrono::steady_clock::now() + time;
+                auto now = std::chrono::steady_clock::now();
+                
+                //try to read first 2 bytes and interprete them as
+                //size to be read (if not already reading a message)
+                if(state == msgStatus::ok){
+                    auto firstResult = recv_for(2, sockfd, buffer, time);
+                    
+                    if(std::get<0>(firstResult) == 2){
+                        std::memcpy((char*)&(size), buffer, sizeof(uint16_t));
+                    }else{
+                        throw timeoutException(time, "Could not receive first two bytes");
+                    }
+                }
+                
+                //actually receive the data
+                auto secondResult = recv_for(size, sockfd, &buffer[received + 2], time);
+                
+                //store total received and remaining size
+                received += std::get<0>(secondResult);
+                size -= std::get<0>(secondResult);
+                
+                if(std::get<1>(secondResult)){
+                    state = msgStatus::receiving;
+                    return state;
+                }
+                
+                //only executes if all bytes were received
+                state = msgStatus::ok;
+                size = 0;
+                received = 0;
+                return state;
             }
 
-            return sent;
-        }
+        private:
+            char buffer[1024];
+            uint16_t size = 0;
+            int received = 0;
 
-        /**
-         * Receives a message into a buffer to be serialized later.
-         *
-         * Will assure message is completely received and will block until so,
-         * so this function is better used asynchronously.
-         *
-         * @param sockfd the socket in which the message will be received from.
-         * @returns the received message.
-         * */
-        void recvMessage(int sockfd){
-            recvMessage_for(sockfd, std::chrono::minutes(1));
-        }
-        
-        /**
-         * Receives a message for [time] microseconds.
-         *
-         * To be used only with sockets which timeout, with a sane amount set such that
-         * the receive loop will not spin for too much and become a cpu hog or wait for
-         * so long that [time] microseconds has already elapsed and the function
-         * executed for too much time.
-         * Will not automatically deserialize data once it finishes receiving data.
-         * If the function runs for [time], a status of receiving is returned.
-         * If the function finalized receiving, a status of ok is returned.
-         *
-         * @param sockfd the socket in which the message will be received from.
-         * @param time the time which the function is to be executed for.
-         * @returns the status of the message.
-         * */
-        msgStatus recvMessage_for(int sockfd, std::chrono::microseconds time){
-            auto began = std::chrono::steady_clock::now();
-            auto timeout = std::chrono::steady_clock::now() + time;
-            auto now = std::chrono::steady_clock::now();
+            /**
+             * Receives [size] bytes with [time] milliseconds as timeout.
+             *
+             * @param size amount to be received.
+             * @param sockfd socket the data will be received from.
+             * @param[out] buffer which data is to be received into.
+             * @param time time in milliseconds which the function has to execute.
+             * @returns  tuple made of, respectivelly, amount of bytes sent, and if function timed out.
+             * */
+            std::tuple<int, bool> recv_for(int size, int sockfd, char* buffer, std::chrono::milliseconds time){
+                auto began = std::chrono::steady_clock::now(); // when function began
+                auto timeout = std::chrono::steady_clock::now() + time; // time limit
+                auto now = std::chrono::steady_clock::now(); // current time
 
-            //read first 2 bytes and interprete them as size to be read
-            //(if not already reading a message)
-            if(state == msgStatus::ok){
-                size = 2;
+                int totalReceived = 0;
+                int received = 0;
+
                 while(size > 0 && now < timeout && received != -1){
-                    received = recv(sockfd, buffer, size, 0);
+                    received = recv(sockfd, &buffer[totalReceived], size, 0);
                     now = std::chrono::steady_clock::now();
 
+                    //loop again if timed out
                     if(received == -1){
                         if(errno == EAGAIN || errno == EWOULDBLOCK){
                             continue;
@@ -330,53 +397,17 @@ namespace Lodestar {
                             throw "error while receiving";
                         }
                     }
+                    totalReceived += received;
                     size = size - received;
                 }
 
-                // TODO: proper error throwing
-                if(now > timeout + std::chrono::minutes(1)){
-                    throw "absolute time out";
-                }else if(now > timeout){
-                    throw "could not start receiving process";
-                }
-                std::memcpy((char*)&(size), buffer, sizeof(uint16_t));
-                received = 0;
-            }
-            
-            //receive data, quitting loop if function timeout reached
-            auto timeout = std::chrono::steady_clock::now() + time;
-            auto now = std::chrono::steady_clock::now();
-            while(size > 0 && now < timeout && received != -1){
-                received = recv(sockfd, &buffer[received + 2], size, 0);
-
-                //loop again if socket timed out
-                if(received == -1){
-                    if(errno == EAGAIN || errno == EWOULDBLOCK){
-                        continue;
-                    }else{
-                        throw "error while receiving";
-                    }
+                bool timedOut = false;
+                if(now > timeout){
+                    timedOut = true;
                 }
 
-                size = size - received;
-                now = std::chrono::steady_clock::now();
+                return std::make_tuple(totalReceived, timedOut);
             }
-
-            if(now > timeout){
-                state = msgStatus::receiving;
-                return state;
-            }
-
-            state = msgStatus::ok;
-            size = 0;
-            received = 0;
-            return state;
-        }
-
-        private:
-            char buffer[1024];
-            uint16_t size = 0;
-            int received = 0;
     };
 
 }
