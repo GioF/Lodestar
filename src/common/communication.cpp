@@ -12,8 +12,7 @@
 
 namespace Lodestar {
 
-    struct registration: transmittable{
-        msgtype dataType = msgtype::authNode;
+    struct registration: public transmittable{
         uint8_t type;        ///< type of registration; 0 for insertion into topic, 1 for deletion
         uint8_t topicType;   ///< type of topic; 0 for pub, 1 for sub
         uint16_t nameLen;         ///< length of topic name
@@ -21,6 +20,10 @@ namespace Lodestar {
         uint16_t registrarLen;    ///< length of registrar name
         char* registrarName; ///< registrar name
 
+        registration(){
+            dataType = msgtype::authNode;
+        }
+        
         int serialize(char* buffer){
             //since this function is the first, i will annotate it a bit
             //so others can have a quicker reference when debugging
@@ -74,14 +77,17 @@ namespace Lodestar {
         }
     };
 
-    struct topicUpdate: transmittable{
-        msgtype dataType = msgtype::topicUpd;
+    struct topicUpdate: public transmittable{
         uint8_t type;          ///< type of update; 0 for addition, 1 for removal
         uint16_t registrarLen; ///< registrar name length
         char* registrarName;   ///< name of registrar, used by the node and master to differentiate registrars
         uint16_t addressLen;   ///< address length
         char* address;         ///< address of updated topic
 
+            topicUpdate(){
+                dataType = msgtype::topicUpd;
+            }
+            
         int serialize(char* buffer){
             uint16_t i, j;
             int offset;
@@ -129,10 +135,13 @@ namespace Lodestar {
         }
     };
 
-    struct shutdown: transmittable{
-        msgtype dataType = msgtype::shutdwn;
+    struct shutdown: public transmittable{
         uint8_t code; ///< code of shutdown, denoting reason for it.
 
+        shutdown(){
+            dataType = msgtype::shutdwn;
+        }
+        
         int serialize(char* buffer){
             buffer[0] = code;
             return 1;
@@ -143,11 +152,14 @@ namespace Lodestar {
         }
     };
 
-    struct auth: transmittable{
-        msgtype dataType = msgtype::authNode;
+    struct auth: public transmittable{
         int8_t size;        ///< negative for size of session id, positive for size of master password
         char* identifier;    ///< either password or session id; see size
 
+            auth(){
+                dataType = msgtype::authNode;
+            }
+            
         int serialize(char* buffer){
             uint8_t i;
             int offset;
