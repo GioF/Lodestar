@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <thread>
 #include <chrono>
+#include <future>
 #include <sys/socket.h>
 #include <pthread.h>
 #include <string>
@@ -19,6 +20,23 @@ void receiveMsgfn(int sockfd, Lodestar::message* msg){
     msg->recvMessage(connectedfd);
     msg->deserializeMessage();
 }
+
+void receiveMsgfn_for(int sockfd, Lodestar::message* msg, std::promise<Lodestar::msgStatus>* p){
+    sockaddr_un inSockaddr;
+    socklen_t addrlen = sizeof(struct sockaddr_un);
+    
+    listen(sockfd, 10);
+    int connectedfd = accept(sockfd, (struct sockaddr *)&inSockaddr, &addrlen);
+
+    //make socket timeout after blocking for 100 milliseconds
+    timeval timeout;
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 100000;
+    setsockopt(connectedfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeval));
+
+    Lodestar::msgStatus status = msg->recvMessage_for(connectedfd, std::chrono::milliseconds(300));
+    p->set_value(status);
+};
 
 void transmitMsgfn(int sockfd, Lodestar::message* msg, sockaddr_un addr){
     connect(sockfd, (struct sockaddr*) &addr, sizeof(sockaddr_un));
@@ -167,14 +185,30 @@ TEST_CASE("Common Message Transmission and reception"){
         REQUIRE(dummyString == receivedString);
     }
 
-    unlink(rxSockaddr.sun_path);
+    SUBCASE("Receive timeout"){
+        //craft buffer that will make listener timeout
+        char buffer[] = {23, 0, 13};
 
-    Lodestar::auth* received = dynamic_cast<Lodestar::auth*>(receivedMessage.data);
-    Lodestar::auth* sent = dynamic_cast<Lodestar::auth*>(msg.data);
+        //set up listener thread
+        std::promise<Lodestar::msgStatus> p;
+        auto fresult = p.get_future();
+        Lodestar::message receivedMessage;
+        std::thread listeningThread = std::thread(&receiveMsgfn_for, rxfd, &receivedMessage, &p);
+        pthread_setname_np(listeningThread.native_handle(), "listener");
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
-    REQUIRE(received->size == sent->size);
-    //get strings from the char arrays and then compare them
-    std::string dummyString = std::string(sent->identifier);
-    std::string receivedString = std::string(received->identifier);
-    REQUIRE(dummyString == receivedString);
+        //send the incomplete buffer
+        connect(txfd, (struct sockaddr*) &txSockaddr, sizeof(sockaddr_un));
+        send(txfd, buffer, 3, 0);
+
+        //wait for listening thread to end and get result
+        listeningThread.join();
+        Lodestar::msgStatus result = fresult.get();
+
+        //unallocate resources
+        unlink(rxSockaddr.sun_path);
+
+        //actual requires
+        REQUIRE(result == Lodestar::msgStatus::receiving);
+    }
 }
