@@ -138,20 +138,33 @@ TEST_CASE("Common Message Transmission and reception"){
     rc = bind(rxfd, (struct sockaddr *) &rxSockaddr, sizeof(sockaddr_un));
     REQUIRE(rc == 0);
 
-    //set up thread that runs the receive part
-    Lodestar::message receivedMessage;
-    std::thread listeningThread = std::thread(&receiveMsgfn, rxfd, &receivedMessage);
-    pthread_setname_np(listeningThread.native_handle(), "listener");
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
-
-    //set up thread that runs the send part
-    std::thread sendingThread = std::thread(&transmitMsgfn, txfd, &msg, txSockaddr);
-    pthread_setname_np(sendingThread.native_handle(), "sender");
-
-    //wait for threads and unlink socket
-    listeningThread.join();
-    if(sendingThread.joinable()){ 
-        sendingThread.join();
+    SUBCASE("Simple transmission and reception"){ 
+        //set up thread that runs the receive part
+        Lodestar::message receivedMessage;
+        std::thread listeningThread = std::thread(&receiveMsgfn, rxfd, &receivedMessage);
+        pthread_setname_np(listeningThread.native_handle(), "listener");
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        
+        //set up thread that runs the send part
+        std::thread sendingThread = std::thread(&transmitMsgfn, txfd, &msg, txSockaddr);
+        pthread_setname_np(sendingThread.native_handle(), "sender");
+        
+        //wait for threads and unlink socket
+        listeningThread.join();
+        if(sendingThread.joinable()){ 
+            sendingThread.join();
+        }
+        
+        unlink(rxSockaddr.sun_path);
+        
+        Lodestar::auth* received = dynamic_cast<Lodestar::auth*>(receivedMessage.data);
+        Lodestar::auth* sent = dynamic_cast<Lodestar::auth*>(msg.data);
+        
+        REQUIRE(received->size == sent->size);
+        //get strings from the char arrays and then compare them
+        std::string dummyString = std::string(sent->identifier);
+        std::string receivedString = std::string(received->identifier);
+        REQUIRE(dummyString == receivedString);
     }
 
     unlink(rxSockaddr.sun_path);
