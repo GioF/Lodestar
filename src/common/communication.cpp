@@ -368,6 +368,8 @@ namespace Lodestar {
             uint16_t size = 0;
             int received = 0;
 
+            // TODO: check if socket has non zero timeout sockopt on input and error out if not
+
             /**
              * Receives [size] bytes with [time] milliseconds as timeout.
              *
@@ -385,13 +387,14 @@ namespace Lodestar {
                 int totalReceived = 0;
                 int received = 0;
 
-                while(size > 0 && now < timeout && received != -1){
+                while(size > 0 && now < timeout){
                     received = recv(sockfd, &buffer[totalReceived], size, 0);
                     now = std::chrono::steady_clock::now();
 
                     //loop again if timed out
                     if(received == -1){
                         if(errno == EAGAIN || errno == EWOULDBLOCK){
+                            received = 0;
                             continue;
                         }else{
                             throw "error while receiving";
