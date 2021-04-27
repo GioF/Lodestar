@@ -113,7 +113,7 @@ namespace Lodestar{
             Master(bool startListener = false){
                 // TODO: function should also read config files for default
                 // socket path and call Master(std::string sockpath)
-                // with said path
+                // with said path, with configurable timeout and number of threads
                 if(startListener){
                     std::string socketPath = std::string(getenv("HOME"));
                     socketPath.append("/.local/share/lodestar/mastersocket");
@@ -153,6 +153,7 @@ namespace Lodestar{
             std::vector<int> authQueue;          ///< queue of sockets awaiting authentication
             std::chrono::seconds gracePeriod;    ///< time after which nodes are disconnected if unauthenticated
             std::mutex queueLock;
+            int nThreads = 0;                                    ///< amount of running threads
             semaphore authAwaitSignal = semaphore(10);           ///< sent from deletion thread to auth threads to notify them to wait
             semaphore authWaitingSignal = semaphore(10);         ///< sent from auth thread to deletion thread to notify they are waiting
             semaphore authContinueSignal = semaphore(10);        ///< sent from deletion thread to auth threads to notify deletion is done
@@ -383,6 +384,47 @@ namespace Lodestar{
                 if(node->identifier == password)
                     return true;
                 else return false;
+            }
+
+            /**
+             * Deletes inactive queue entries once a specific cutoff is met.
+             *
+             * Will send [nThreads] signals via authAwaitSignal so that authentication
+             * threads are notified to wait, then wait for them to notify they are
+             * waiting; once it's done, deletes inactive entries and sends [nThreads]
+             * signals via authContinueSignal to notify threads deletion is done.
+             * The queueLock is also locked, so that sudden insertions can't result in
+             * undefined behaviour.
+             *
+             * @param queue que queue to be cleaned up.
+             * @param cutoff the amount of inactive items after which they are delted.
+             * */
+            void cleanupQueue(std::list<autheableNode>* queue, unsigned int cutoff){
+                //count amount of inactive queue entries
+                int count = 0;
+                std::list<autheableNode>::iterator it;
+                for(it = queue->begin(); count < cutoff && it != queue->end(); it++){
+                    if(!it->active)
+                        count++;
+                }
+
+                //notify auth threads to wait, block until they are all waiting,
+                //delete inactive entries then notify threads deletion is done
+                if(count >= cutoff){
+                    queueLock.lock();
+                    for(int n = 0; n < nThreads; n++)
+                        authAwaitSignal.post();
+
+                    for(int n = 0; n < nThreads; n++)
+                        authWaitingSignal.wait();
+
+                    queue->remove_if([](autheableNode item){return !item.active;});
+
+                    for(int n = 0; n < nThreads; n++)
+                        authContinueSignal.post();
+                }
+
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
             }
     };
 }
