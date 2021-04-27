@@ -2,6 +2,8 @@
 #define LODEMST_H
 
 #include <vector>
+#include <list>
+#include <chrono>
 #include <string>
 #include <cstring>
 #include <mutex>
@@ -11,8 +13,11 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
+#include <boost/interprocess/sync/interprocess_semaphore.hpp>
 #include "../common/communication.cpp"
 #include "../common/types.h"
+
+using semaphore = boost::interprocess::interprocess_semaphore;
 
 namespace Lodestar{
 
@@ -65,6 +70,21 @@ namespace Lodestar{
                 int socketFd;                          ///< The file descriptor of the nodes' socket.
                 std::vector<topicTreeRef> publishers;  ///< vector of topics the node publishes to.
                 std::vector<topicTreeRef> subscribers; ///< vector of topics the node subscribes to.
+            };
+
+            /**
+             * A struct that represents an authenticable socket.
+             *
+             * An authenticable socket is a socket which is connected, but is yet to
+             * send an identifier or a session ID to be treated as a node which is authorized
+             * to communicate with the Master.
+             * */
+            struct autheableNode {
+                std::mutex lock;
+                message authmsg; ///< where the auth message will be
+                std::chrono::time_point<std::chrono::steady_clock> timeout; ///< when it will timeout
+                int sockfd;      ///< the file descriptor of the authenticable socket
+                bool active = true;
             };
 
             ~Master(){
@@ -129,8 +149,13 @@ namespace Lodestar{
             sockaddr_un sockaddr;
 
             std::thread *listeningThread = NULL; ///< pointer to listener thread
-            std::vector<int> authQueue;         ///< queue of sockets awaiting authentication
+            std::string password = "";           ///< password that is authenticated against
+            std::vector<int> authQueue;          ///< queue of sockets awaiting authentication
+            std::chrono::seconds gracePeriod;    ///< time after which nodes are disconnected if unauthenticated
             std::mutex queueLock;
+            semaphore authAwaitSignal = semaphore(10);           ///< sent from deletion thread to auth threads to notify them to wait
+            semaphore authWaitingSignal = semaphore(10);         ///< sent from auth thread to deletion thread to notify they are waiting
+            semaphore authContinueSignal = semaphore(10);        ///< sent from deletion thread to auth threads to notify deletion is done
             
             topicTreeNode* rootNode = new topicTreeNode; ///< tree of directories and topics.
             std::vector<node> nodeArray;                 ///< array of nodes connected to this master.
@@ -279,6 +304,86 @@ namespace Lodestar{
                     }
                 }
             };
+
+            /**
+             * Queue authentication function.
+             *
+             * Will loop through the queue calling the recvMessage_for function of the
+             * item's message object with [timeout] timeout and mark the entries that
+             * exceed their object's respective timeout as inactive so that the queue
+             * deletion thread can clean them up.
+             *
+             * Every start of the main loop, it checks if the queue deletion thread has
+             * sent a signal through authAwaitSignal; if so, notifies the deletion thread
+             * that it is currently waiting for the deletion to be complete and then waits
+             * for the signal that it is complete.
+             *
+             * @param queue the authenticable node queue.
+             * @param timeout the time to be spent receiving each message.
+             * */
+            void authorizeNodes(std::list<autheableNode>* queue, std::chrono::milliseconds timeout){
+                std::list<autheableNode>::iterator it;
+                while(isOk){
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+                    //check for deletion thread signals
+                    bool result = authAwaitSignal.try_wait();
+                    if(result){
+                        authWaitingSignal.post(); //notify deletion thread that this thread is waiting
+                        authContinueSignal.wait(); //wait until deletion thread signals to continue
+                    }
+                    
+
+                    //loop auth queue and try to authenticate each one respecting timeout
+                    for(it = queue->begin(); it != queue->end(); ++it){
+                        if(!it->active || !it->lock.try_lock())
+                            continue;
+                        msgStatus status = it->authmsg.recvMessage_for(it->sockfd, timeout);
+
+                        switch(status){
+                            //if still receiving or not receiving at all
+                            case msgStatus::receiving:
+                            case msgStatus::nomsg:{
+                                if(it->timeout > std::chrono::steady_clock::now())
+                                    break;
+                                else{
+                                    it->active = false; //mark for deletion if timeout has passed
+                                    break;
+                                }
+                            }
+                            //if just received
+                            case msgStatus::ok:{
+                                it->authmsg.deserializeMessage();
+                                bool granted = authenticate(static_cast<auth*>(it->authmsg.data));
+                                if(granted){
+                                    node newNode;
+                                    newNode.socketFd = it->sockfd;
+                                    nodeArray.push_back(newNode);
+                                }
+                                it->active = false;
+                                break;
+                            }
+                        }
+
+                        it->lock.unlock();
+                    }
+                }
+            };
+
+            /**
+             * Authenticates a node.
+             *
+             * For now just a placeholder until i finish implementing the core authentication
+             * pipeline.
+             *
+             * @param node the auth message sent by the node.
+             * @returns true if the node was granted permission, false if not.
+             * */
+            bool authenticate(auth* node){
+                if(node->identifier == password)
+                    return true;
+                else return false;
+            }
     };
 }
 
