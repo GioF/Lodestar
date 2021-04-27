@@ -124,7 +124,7 @@ namespace Lodestar{
 
         private:
             // TODO: tidy up following horribleness
-            bool isOk = true;     ///< variable that tracks if class is shutting down
+            bool isOk = true;     ///< variable that tracks if class is ok (not shutting down)
             int sockfd;           ///< master listening socket file descriptor.
             sockaddr_un sockaddr;
 
@@ -136,7 +136,7 @@ namespace Lodestar{
             std::vector<node> nodeArray;                 ///< array of nodes connected to this master.
 
             /**
-             * Tokenizes (separates) path string into indexable vector.
+             * Tokenizes a path string with "/" as delimiter.
              *
              * @param[in] Path the path string to be tokenized.
              * @returns The vector in which each element is a "directory" of the path.
@@ -244,7 +244,7 @@ namespace Lodestar{
             }
 
             /**
-             * Listener thread function.
+             * Connection listener function.
              *
              * Will listen for connections on sockfd and when connected, the new file descriptor will
              * be sent to the authentication queue.

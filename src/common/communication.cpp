@@ -339,6 +339,8 @@ namespace Lodestar {
                     
                     if(std::get<0>(firstResult) == 2){
                         std::memcpy((char*)&(size), buffer, sizeof(uint16_t));
+                    }else if(std::get<0>(firstResult) == 0){
+                        return msgStatus::nomsg;
                     }else{
                         throw timeoutException(time, "Could not receive first two bytes");
                     }

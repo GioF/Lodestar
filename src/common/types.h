@@ -7,7 +7,7 @@ namespace Lodestar{
 
     enum msgtype: uint8_t{authNode, topicReg, topicUpd, shutdwn};
 
-    enum msgStatus {ok, receiving};
+    enum msgStatus {ok, receiving, nomsg};
 
     class transmittable{
         public:
