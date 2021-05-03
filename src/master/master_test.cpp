@@ -62,7 +62,10 @@ namespace Lodestar{
             void attachListener(){
                 listeningThread = master->listeningThread;
             }
-            
+
+            void cleanupQueue(){
+                master->cleanupQueue(authQueue, 1);
+            }
     };
 }
 
@@ -197,6 +200,26 @@ TEST_CASE("Master - local networking logic"){
 
         REQUIRE(rc == 0);
         REQUIRE(master.authQueue->size() == 1);
-        REQUIRE(master.authQueue->at(0) > 0);
+        REQUIRE(master.authQueue->front().sockfd > 0);
+    }
+
+    SUBCASE("cleanupQueue - entry deletion"){
+        Lodestar::Master::autheableNode dummyEntry;
+        dummyEntry.active = false;
+        dummyEntry.timeout = std::chrono::steady_clock::now();
+
+        master.authQueue->push_back(dummyEntry);
+        master.authQueue->push_back(dummyEntry);
+        REQUIRE(master.authQueue->size() == 2);
+
+        // XXX: ADAPT AFTER CLEANUP IS LOOPING!!
+        master.cleanupQueue();
+        REQUIRE(master.authQueue->size() == 0);
+
+        master.authQueue->push_back(dummyEntry);
+        REQUIRE(master.authQueue->size() == 1);
+
+        master.cleanupQueue();
+        REQUIRE(master.authQueue->size() == 0);
     }
 }
