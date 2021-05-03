@@ -83,7 +83,7 @@ namespace Lodestar{
                 std::mutex lock;
                 message authmsg; ///< where the auth message will be
                 std::chrono::time_point<std::chrono::steady_clock> timeout; ///< when it will timeout
-                int sockfd;      ///< the file descriptor of the authenticable socket
+                int sockfd = 0;      ///< the file descriptor of the authenticable socket
                 bool active = true;
 
                 autheableNode(const autheableNode& node){
@@ -435,6 +435,7 @@ namespace Lodestar{
 
                     for(int n = 0; n < nThreads; n++)
                         authContinueSignal.post();
+                    queueLock.unlock();
                 }
 
                 std::this_thread::sleep_for(std::chrono::milliseconds(500));

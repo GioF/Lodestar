@@ -169,7 +169,7 @@ TEST_CASE("Master - business logic"){
 }
 
 // NOTE: should test non-local networking since host info can be gotten from both sides
-TEST_CASE("Master - local networking"){
+TEST_CASE("Master - local networking logic"){
     std::string socketPath = std::string(getenv("PWD"));
     socketPath.append("/listener.socket");
 
