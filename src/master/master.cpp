@@ -85,6 +85,15 @@ namespace Lodestar{
                 std::chrono::time_point<std::chrono::steady_clock> timeout; ///< when it will timeout
                 int sockfd;      ///< the file descriptor of the authenticable socket
                 bool active = true;
+
+                autheableNode(const autheableNode& node){
+                    authmsg = node.authmsg;
+                    timeout = node.timeout;
+                    sockfd = node.sockfd;
+                    active = node.active;
+                }
+
+                autheableNode(){}
             };
 
             ~Master(){
@@ -150,7 +159,7 @@ namespace Lodestar{
 
             std::thread *listeningThread = NULL; ///< pointer to listener thread
             std::string password = "";           ///< password that is authenticated against
-            std::vector<int> authQueue;          ///< queue of sockets awaiting authentication
+            std::list<autheableNode> authQueue;  ///< queue of sockets awaiting authentication
             std::chrono::seconds gracePeriod;    ///< time after which nodes are disconnected if unauthenticated
             std::mutex queueLock;
             int nThreads = 0;                    ///< amount of running threads
@@ -295,8 +304,12 @@ namespace Lodestar{
 
                     if(rv > 0){
                         newSockfd = accept(sockfd, (struct sockaddr *)&inSockaddr, &addrlen);
+                        autheableNode newNode;
+                        newNode.sockfd = newSockfd;
+                        newNode.timeout = std::chrono::steady_clock::now() + gracePeriod;
+
                         queueLock.lock();
-                        authQueue.push_back(newSockfd);
+                        authQueue.push_back(newNode);
                         queueLock.unlock();
                     }
                     if(rv < 0){

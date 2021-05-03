@@ -32,7 +32,7 @@ namespace Lodestar{
             int* sockfd;
             sockaddr_un* sockaddr;
             std::thread *listeningThread = NULL;
-            std::vector<int>* authQueue = NULL;
+            std::list<Lodestar::Master::autheableNode>* authQueue = NULL;
 
             void setupPointers(){
                 rootNode = master->rootNode;
