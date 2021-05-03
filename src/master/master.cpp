@@ -101,7 +101,7 @@ namespace Lodestar{
              *
              * @param sockPath the desired path to be used with the socket
              * */
-            Master(std::string sockPath){
+            Master(std::string sockPath):authAwaitSignal(0), authWaitingSignal(0), authContinueSignal(0){
                 setupListener(sockPath);
             }
 
@@ -110,7 +110,7 @@ namespace Lodestar{
              *
              * @param startNode boolean that informs constructor if listener should be started.
              * */
-            Master(bool startListener = false){
+            Master(bool startListener = false): authAwaitSignal(0), authWaitingSignal(0), authContinueSignal(0){
                 // TODO: function should also read config files for default
                 // socket path and call Master(std::string sockpath)
                 // with said path, with configurable timeout and number of threads
@@ -153,10 +153,10 @@ namespace Lodestar{
             std::vector<int> authQueue;          ///< queue of sockets awaiting authentication
             std::chrono::seconds gracePeriod;    ///< time after which nodes are disconnected if unauthenticated
             std::mutex queueLock;
-            int nThreads = 0;                                    ///< amount of running threads
-            semaphore authAwaitSignal = semaphore(10);           ///< sent from deletion thread to auth threads to notify them to wait
-            semaphore authWaitingSignal = semaphore(10);         ///< sent from auth thread to deletion thread to notify they are waiting
-            semaphore authContinueSignal = semaphore(10);        ///< sent from deletion thread to auth threads to notify deletion is done
+            int nThreads = 0;                    ///< amount of running threads
+            semaphore authAwaitSignal;           ///< sent from deletion thread to auth threads to notify them to wait
+            semaphore authWaitingSignal;         ///< sent from auth thread to deletion thread to notify they are waiting
+            semaphore authContinueSignal;        ///< sent from deletion thread to auth threads to notify deletion is done
             
             topicTreeNode* rootNode = new topicTreeNode; ///< tree of directories and topics.
             std::vector<node> nodeArray;                 ///< array of nodes connected to this master.
