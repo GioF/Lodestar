@@ -1,9 +1,12 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include <chrono>
+#include <sys/socket.h>
+#include <boost/interprocess/sync/interprocess_semaphore.hpp>
 #include "master.cpp"
 #include "../common/doctest.h"
 #include "../common/types.h"
-#include <sys/socket.h>
-#include <chrono>
+
+using semaphore = boost::interprocess::interprocess_semaphore;
 
 namespace Lodestar{
     class Master_test: Master{
@@ -33,6 +36,10 @@ namespace Lodestar{
             sockaddr_un* sockaddr;
             std::thread *listeningThread = NULL;
             std::list<Lodestar::Master::autheableNode>* authQueue = NULL;
+            int* nThreads;
+            semaphore* authAwaitSignal;
+            semaphore* authWaitingSignal;
+            semaphore* authContinueSignal;
 
             void setupPointers(){
                 rootNode = master->rootNode;
@@ -40,6 +47,10 @@ namespace Lodestar{
                 isOk = &(master->isOk);
                 sockfd = &(master->sockfd);
                 sockaddr = &(master->sockaddr);
+                nThreads = &(master->nThreads);
+                authAwaitSignal = &(master->authAwaitSignal);
+                authWaitingSignal = &(master->authWaitingSignal);
+                authContinueSignal = &(master->authContinueSignal);
             };
             
             //mirroed(?) master class private methods
@@ -63,8 +74,8 @@ namespace Lodestar{
                 listeningThread = master->listeningThread;
             }
 
-            void cleanupQueue(){
-                master->cleanupQueue(authQueue, 1);
+            void cleanupQueue(int cutoff){
+                master->cleanupQueue(authQueue, cutoff);
             }
     };
 }
@@ -203,23 +214,29 @@ TEST_CASE("Master - local networking logic"){
         REQUIRE(master.authQueue->front().sockfd > 0);
     }
 
-    SUBCASE("cleanupQueue - entry deletion"){
+    SUBCASE("cleanupQueue - entry deletion and thread sincronization"){
         Lodestar::Master::autheableNode dummyEntry;
         dummyEntry.active = false;
         dummyEntry.timeout = std::chrono::steady_clock::now();
+        *master.nThreads = 1;
 
         master.authQueue->push_back(dummyEntry);
         master.authQueue->push_back(dummyEntry);
         REQUIRE(master.authQueue->size() == 2);
 
-        // XXX: ADAPT AFTER CLEANUP IS LOOPING!!
-        master.cleanupQueue();
+        master.authWaitingSignal->post();
+        master.cleanupQueue(1);
+        REQUIRE(master.authAwaitSignal->try_wait());
+        REQUIRE(!master.authAwaitSignal->try_wait());
+        REQUIRE(master.authContinueSignal->try_wait());
+        REQUIRE(!master.authContinueSignal->try_wait());
         REQUIRE(master.authQueue->size() == 0);
 
         master.authQueue->push_back(dummyEntry);
         REQUIRE(master.authQueue->size() == 1);
 
-        master.cleanupQueue();
+        master.authWaitingSignal->post();
+        master.cleanupQueue(1);
         REQUIRE(master.authQueue->size() == 0);
     }
 }

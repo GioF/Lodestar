@@ -408,6 +408,8 @@ namespace Lodestar{
              * signals via authContinueSignal to notify threads deletion is done.
              * The queueLock is also locked, so that sudden insertions can't result in
              * undefined behaviour.
+             * DOES NOT LOOP BY ITSELF; sleeping and looping is done at the caller's
+             * discretion.
              *
              * @param queue que queue to be cleaned up.
              * @param cutoff the amount of inactive items after which they are delted.
@@ -437,8 +439,6 @@ namespace Lodestar{
                         authContinueSignal.post();
                     queueLock.unlock();
                 }
-
-                std::this_thread::sleep_for(std::chrono::milliseconds(500));
             }
     };
 }
