@@ -332,55 +332,57 @@ namespace Lodestar{
              * that it is currently waiting for the deletion to be complete and then waits
              * for the signal that it is complete.
              *
+             * DOES NOT LOOP BY ITSELF; sleeping and looping is done at the caller's
+             * discretion.
+             *
              * @param queue the authenticable node queue.
              * @param timeout the time to be spent receiving each message.
              * */
             void authorizeNodes(std::list<autheableNode>* queue, std::chrono::milliseconds timeout){
                 std::list<autheableNode>::iterator it;
-                while(isOk){
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-                    //check for deletion thread signals
-                    bool result = authAwaitSignal.try_wait();
-                    if(result){
-                        authWaitingSignal.post(); //notify deletion thread that this thread is waiting
-                        authContinueSignal.wait(); //wait until deletion thread signals to continue
-                    }
+                
+                //check for deletion thread signals
+                // NOTE: This should maybe be extracted since looping and sleeping
+                // is already done at the caller's discretion
+                bool result = authAwaitSignal.try_wait();
+                if(result){
+                    authWaitingSignal.post(); //notify deletion thread that this thread is waiting
+                    authContinueSignal.wait(); //wait until deletion thread signals to continue
+                }
+                
+                
+                //loop auth queue and try to authenticate each one respecting timeout
+                for(it = queue->begin(); it != queue->end(); ++it){
+                    if(!it->active || !it->lock.try_lock())
+                        continue;
+                    msgStatus status = it->authmsg.recvMessage_for(it->sockfd, timeout);
                     
-
-                    //loop auth queue and try to authenticate each one respecting timeout
-                    for(it = queue->begin(); it != queue->end(); ++it){
-                        if(!it->active || !it->lock.try_lock())
-                            continue;
-                        msgStatus status = it->authmsg.recvMessage_for(it->sockfd, timeout);
-
-                        switch(status){
-                            //if still receiving or not receiving at all
-                            case msgStatus::receiving:
-                            case msgStatus::nomsg:{
-                                if(it->timeout > std::chrono::steady_clock::now())
-                                    break;
-                                else{
-                                    it->active = false; //mark for deletion if timeout has passed
-                                    break;
-                                }
-                            }
-                            //if just received
-                            case msgStatus::ok:{
-                                it->authmsg.deserializeMessage();
-                                bool granted = authenticate(static_cast<auth*>(it->authmsg.data));
-                                if(granted){
-                                    node newNode;
-                                    newNode.socketFd = it->sockfd;
-                                    nodeArray.push_back(newNode);
-                                }
-                                it->active = false;
+                    switch(status){
+                        //if still receiving or not receiving at all
+                        case msgStatus::receiving:
+                        case msgStatus::nomsg:{
+                            if(it->timeout > std::chrono::steady_clock::now())
+                                break;
+                            else{
+                                it->active = false; //mark for deletion if timeout has passed
                                 break;
                             }
                         }
-
-                        it->lock.unlock();
+                            //if just received
+                        case msgStatus::ok:{
+                            it->authmsg.deserializeMessage();
+                            bool granted = authenticate(static_cast<auth*>(it->authmsg.data));
+                            if(granted){
+                                node newNode;
+                                newNode.socketFd = it->sockfd;
+                                nodeArray.push_back(newNode);
+                            }
+                            it->active = false;
+                            break;
+                        }
                     }
+                    
+                    it->lock.unlock();
                 }
             };
 
@@ -408,6 +410,7 @@ namespace Lodestar{
              * signals via authContinueSignal to notify threads deletion is done.
              * The queueLock is also locked, so that sudden insertions can't result in
              * undefined behaviour.
+             *
              * DOES NOT LOOP BY ITSELF; sleeping and looping is done at the caller's
              * discretion.
              *
