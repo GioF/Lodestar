@@ -33,3 +33,6 @@
 
 # Documentation
 doc/*
+
+# Memory dumps
+dump.bin

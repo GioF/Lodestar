@@ -312,21 +312,32 @@ TEST_CASE("Master - local networking logic"){
         dummyEntry.timeout = std::chrono::steady_clock::now();
         *master.nThreads = 1;
 
+        //insert two entries and see if they are there
         master.authQueue->push_back(dummyEntry);
         master.authQueue->push_back(dummyEntry);
         REQUIRE(master.authQueue->size() == 2);
 
+        //signal deletion function that the auth thread is
+        //waiting and then call cleanup
         master.authWaitingSignal->post();
         master.cleanupQueue(1);
+
+        //check if only one await signal was sent
         REQUIRE(master.authAwaitSignal->try_wait());
         REQUIRE(!master.authAwaitSignal->try_wait());
+
+        //check if only one continue signal was sent
         REQUIRE(master.authContinueSignal->try_wait());
         REQUIRE(!master.authContinueSignal->try_wait());
+
+        //check that both entries were deleted
         REQUIRE(master.authQueue->size() == 0);
 
+        //insert another entry
         master.authQueue->push_back(dummyEntry);
         REQUIRE(master.authQueue->size() == 1);
 
+        //check if it was deleted again
         master.authWaitingSignal->post();
         master.cleanupQueue(1);
         REQUIRE(master.authQueue->size() == 0);
