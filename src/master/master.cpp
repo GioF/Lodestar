@@ -355,7 +355,16 @@ namespace Lodestar{
                 for(it = queue->begin(); it != queue->end(); ++it){
                     if(!it->active || !it->lock.try_lock())
                         continue;
-                    msgStatus status = it->authmsg.recvMessage_for(it->sockfd, timeout);
+
+                    msgStatus status;
+                    try{
+                        status = it->authmsg.recvMessage_for(it->sockfd, timeout);
+                    }catch(int err){
+                        //mark inactive it socket errors out
+                        it->active = false;
+                        it->lock.unlock();
+                        continue;
+                    }
                     
                     switch(status){
                         //if still receiving or not receiving at all

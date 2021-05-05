@@ -399,7 +399,7 @@ namespace Lodestar {
                             received = 0;
                             continue;
                         }else{
-                            throw "error while receiving";
+                            throw errno;
                         }
                     }
                     totalReceived += received;

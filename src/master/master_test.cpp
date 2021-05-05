@@ -214,6 +214,22 @@ TEST_CASE("Master - local networking logic"){
         REQUIRE(master.authQueue->front().sockfd > 0);
     }
 
+    SUBCASE("authorizeNodes"){
+        Lodestar::Master::autheableNode dummyEntry;
+        dummyEntry.timeout = std::chrono::steady_clock::now();
+
+        SUBCASE("socket error"){
+            dummyEntry.sockfd = socket(AF_LOCAL, SOCK_STREAM, 0);
+            close(dummyEntry.sockfd);
+
+            master.authQueue->push_back(dummyEntry);
+            master.authorizeNodes(100);
+
+            REQUIRE(!master.authQueue->front().active);
+        }
+        
+    }
+    
     SUBCASE("cleanupQueue - entry deletion and thread sincronization"){
         Lodestar::Master::autheableNode dummyEntry;
         dummyEntry.active = false;
