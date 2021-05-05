@@ -158,7 +158,7 @@ namespace Lodestar{
             sockaddr_un sockaddr;
 
             std::thread *listeningThread = NULL; ///< pointer to listener thread
-            std::string password = "";           ///< password that is authenticated against
+            std::string password = " ";           ///< password that is authenticated against
             std::list<autheableNode> authQueue;  ///< queue of sockets awaiting authentication
             std::chrono::seconds gracePeriod;    ///< time after which nodes are disconnected if unauthenticated
             std::mutex queueLock;
@@ -405,7 +405,8 @@ namespace Lodestar{
              * @returns true if the node was granted permission, false if not.
              * */
             bool authenticate(auth* node){
-                if(node->identifier == password)
+                std::string equivString(node->identifier);
+                if(equivString == password)
                     return true;
                 else return false;
             }

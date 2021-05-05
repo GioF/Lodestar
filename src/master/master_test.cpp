@@ -3,6 +3,7 @@
 #include <sys/socket.h>
 #include <boost/interprocess/sync/interprocess_semaphore.hpp>
 #include "master.cpp"
+#include "../common/communication.cpp"
 #include "../common/doctest.h"
 #include "../common/types.h"
 
@@ -29,6 +30,7 @@ namespace Lodestar{
             
             Master *master = NULL;
             topicTreeNode* rootNode = NULL;
+            std::vector<Lodestar::Master::node>* nodeArray = NULL;
 
             //threading variables
             bool* isOk;
@@ -43,6 +45,7 @@ namespace Lodestar{
 
             void setupPointers(){
                 rootNode = master->rootNode;
+                nodeArray = &(master->nodeArray);
                 authQueue = &(master->authQueue);
                 isOk = &(master->isOk);
                 sockfd = &(master->sockfd);
@@ -228,7 +231,7 @@ TEST_CASE("Master - local networking logic"){
         mSockaddr.sun_family = AF_LOCAL;
         std::strcpy(mSockaddr.sun_path, "listener.socket");
 
-        SUBCASE("socket error"){
+        SUBCASE("general socket error"){
             close(dummyEntry.sockfd);
 
             master.authQueue->push_back(dummyEntry);
@@ -237,74 +240,69 @@ TEST_CASE("Master - local networking logic"){
             REQUIRE(!master.authQueue->front().active);
         }
 
-        SUBCASE("timeout"){
+        SUBCASE("default operation"){
             //connect a dummy socket and check if it's on the queue
             int dummySock = socket(AF_LOCAL, SOCK_STREAM, 0);
             connect(dummySock, (struct sockaddr*) &mSockaddr, sizeof(sockaddr_un));
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
-            
-            REQUIRE(master.authQueue->front().active);
-
-            //set up queue entry to timeout immediately
-            master.authQueue->front().timeout = std::chrono::steady_clock::now();
 
             //make socket timeout after blocking for 100 milliseconds
             timeval timeout;
             timeout.tv_sec = 0;
             timeout.tv_usec = 100000;
             setsockopt(master.authQueue->front().sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeval));
-
-            //try to authorize without sending nothing so it times out
-            master.authorizeNodes(100);
-            REQUIRE(!master.authQueue->front().active);
-        }
-
-        SUBCASE("no message"){
-            //connect a dummy socket and check if it's on the queue
-            int dummySock = socket(AF_LOCAL, SOCK_STREAM, 0);
-            connect(dummySock, (struct sockaddr*) &mSockaddr, sizeof(sockaddr_un));
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));
             
             REQUIRE(master.authQueue->front().active);
 
-            //set up very long timeout so it doesn't timeout
-            auto entryTimeout = std::chrono::steady_clock::now() + std::chrono::minutes(1);
-            master.authQueue->front().timeout = entryTimeout;
+            SUBCASE("message timed out"){
+                //set up queue entry to timeout immediately
+                master.authQueue->front().timeout = std::chrono::steady_clock::now();
+                
+                //try to authorize without sending nothing so it times out
+                master.authorizeNodes(100);
+                REQUIRE(!master.authQueue->front().active);
+            }
 
-            //make socket timeout after blocking for 100 milliseconds
-            timeval timeout;
-            timeout.tv_sec = 0;
-            timeout.tv_usec = 100000;
-            setsockopt(master.authQueue->front().sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeval));
+            SUBCASE("no message sent"){
+                //set up very long timeout so it doesn't timeout
+                auto entryTimeout = std::chrono::steady_clock::now() + std::chrono::minutes(1);
+                master.authQueue->front().timeout = entryTimeout;
 
-            master.authorizeNodes(100);
-            REQUIRE(master.authQueue->front().active);
-        }
+                master.authorizeNodes(100);
+                REQUIRE(master.authQueue->front().active);
+            }
 
-        SUBCASE("receiving"){
-            //connect a dummy socket and check if it's on the queue
-            int dummySock = socket(AF_LOCAL, SOCK_STREAM, 0);
-            connect(dummySock, (struct sockaddr*) &mSockaddr, sizeof(sockaddr_un));
-            std::this_thread::sleep_for(std::chrono::milliseconds(800));
-            
-            REQUIRE(master.authQueue->front().active);
+            SUBCASE("unfinished message"){
+                //set up very long timeout so it doesn't timeout
+                auto entryTimeout = std::chrono::steady_clock::now() + std::chrono::minutes(1);
+                master.authQueue->front().timeout = entryTimeout;
+                
+                //send size header and nothing more
+                int dummybuf = 10;
+                auto sent = send(dummySock, &dummybuf, 2, 0);
+                
+                master.authorizeNodes(100);
+                REQUIRE(master.authQueue->front().active);
+            }
 
-            //set up very long timeout so it doesn't timeout
-            auto entryTimeout = std::chrono::steady_clock::now() + std::chrono::minutes(1);
-            master.authQueue->front().timeout = entryTimeout;
+            SUBCASE("fully received message"){
+                //set up dummy auth message
+                Lodestar::auth dummyAuth;
+                dummyAuth.size = 2;
+                char emptyIdentifier[] = " ";
+                dummyAuth.identifier = emptyIdentifier;
 
-            //make socket timeout after blocking for 100 milliseconds
-            timeval timeout;
-            timeout.tv_sec = 0;
-            timeout.tv_usec = 100000;
-            setsockopt(master.authQueue->front().sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeval));
+                //send it
+                Lodestar::message dummyMsg;
+                dummyMsg.data = &dummyAuth;
+                dummyMsg.sendMessage(dummySock);
 
-            //send size header and nothing more
-            int dummybuf = 10;
-            auto sent = send(dummySock, &dummybuf, 2, 0);
-
-            master.authorizeNodes(100);
-            REQUIRE(master.authQueue->front().active);
+                //authorize and check if it was correctly added
+                //to node list
+                master.authorizeNodes(100);
+                REQUIRE(!master.authQueue->front().active);
+                REQUIRE(master.nodeArray->size() == 1);
+            }
         }
     }
     
