@@ -74,6 +74,10 @@ namespace Lodestar{
                 listeningThread = master->listeningThread;
             }
 
+            void authorizeNodes(int timeout){
+                master->authorizeNodes(authQueue, std::chrono::milliseconds(timeout));
+            }
+            
             void cleanupQueue(int cutoff){
                 master->cleanupQueue(authQueue, cutoff);
             }
