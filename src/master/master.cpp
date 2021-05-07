@@ -16,6 +16,7 @@
 #include <boost/interprocess/sync/interprocess_semaphore.hpp>
 #include "../common/communication.cpp"
 #include "../common/types.h"
+#include "types.hpp"
 
 using semaphore = boost::interprocess::interprocess_semaphore;
 

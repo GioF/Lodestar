@@ -30,14 +30,14 @@ namespace Lodestar{
             
             Master *master = NULL;
             topicTreeNode* rootNode = NULL;
-            std::list<Lodestar::Master::connectedNode>* nodeArray = NULL;
+            std::list<Lodestar::connectedNode>* nodeArray = NULL;
 
             //threading variables
             bool* isOk;
             int* sockfd;
             sockaddr_un* sockaddr;
             std::thread *listeningThread = NULL;
-            std::list<Lodestar::Master::autheableNode>* authQueue = NULL;
+            std::list<Lodestar::autheableNode>* authQueue = NULL;
             int* nThreads;
             semaphore* authAwaitSignal;
             semaphore* authWaitingSignal;
@@ -91,9 +91,9 @@ TEST_CASE("Master - business logic"){
     Lodestar::Master_test master;
 
     std::string path = "dir1/dir2/lastdir";
-    Lodestar::Master::topicTreeNode dir1;
-    Lodestar::Master::topicTreeNode dir2;
-    Lodestar::Master::topicTreeNode lastdir;
+    Lodestar::topicTreeNode dir1;
+    Lodestar::topicTreeNode dir2;
+    Lodestar::topicTreeNode lastdir;
 
     SUBCASE("tokenizeTopicStr - separate path into vector"){
         std::vector<std::string> supposedPath;
@@ -122,7 +122,7 @@ TEST_CASE("Master - business logic"){
         dir2.subNodes.push_back(dir2);
         master.rootNode->subNodes.push_back(dir1);
 
-        Lodestar::Master::topicTreeNode* returnedDir;
+        Lodestar::topicTreeNode* returnedDir;
         returnedDir = master.getDir(dirPath);
 
         REQUIRE(returnedDir->name == lastdir.name);
@@ -132,8 +132,8 @@ TEST_CASE("Master - business logic"){
     SUBCASE("getDir - directory insertion"){
         std::vector<std::string> dirPath = master.tokenizeTopicStr("dir1/dir2/lastdir");
 
-        Lodestar::Master::topicTreeNode* firstReturnedDir;
-        Lodestar::Master::topicTreeNode* secondReturnedDir;
+        Lodestar::topicTreeNode* firstReturnedDir;
+        Lodestar::topicTreeNode* secondReturnedDir;
 
         firstReturnedDir = master.getDir(dirPath);
         secondReturnedDir = master.getDir(dirPath);
@@ -143,15 +143,15 @@ TEST_CASE("Master - business logic"){
 
     SUBCASE("getTopic - topic finding"){
         std::vector<std::string> dirPath = master.tokenizeTopicStr("dir1/dir2");
-        Lodestar::Master::topicTreeNode* dir;
+        Lodestar::topicTreeNode* dir;
         dir = master.getDir(dirPath);
 
-        Lodestar::Master::topicTreeNode* returnedTopic;
+        Lodestar::topicTreeNode* returnedTopic;
         returnedTopic = master.getTopic(dir, "topic");
 
         REQUIRE(returnedTopic == NULL);
 
-        Lodestar::Master::topicTreeNode topic;
+        Lodestar::topicTreeNode topic;
         topic.name = "topic";
         topic.type = Lodestar::nodeType::topic;
         dir->subNodes.push_back(topic);
@@ -162,13 +162,13 @@ TEST_CASE("Master - business logic"){
 
     SUBCASE("registerToTopic - topic registration/insertion"){
         std::vector<std::string> dirPath = master.tokenizeTopicStr("dir1");
-        Lodestar::Master::topicTreeNode* dir;
+        Lodestar::topicTreeNode* dir;
         dir = master.getDir(dirPath);
 
         int nodeSocket = 0;
         std::string registrarType = "pub";
         std::string address = "sample";
-        Lodestar::Master::registrar* registrar = NULL;
+        Lodestar::registrar* registrar = NULL;
 
         SUBCASE("registerToTopic - topic doesn't exist yet"){
             master.registerToTopic("dir1/topic", registrarType, nodeSocket, address);
@@ -178,7 +178,7 @@ TEST_CASE("Master - business logic"){
         }
 
         SUBCASE("registerToTopic - topic exists"){
-            Lodestar::Master::topicTreeNode* returnedTopic;
+            Lodestar::topicTreeNode* returnedTopic;
             returnedTopic = master.getTopic(dir, "topic");
 
             master.registerToTopic("dir1/topic", registrarType, nodeSocket, address);
@@ -222,7 +222,7 @@ TEST_CASE("Master - local networking logic"){
     }
 
     SUBCASE("authorizeNodes"){
-        Lodestar::Master::autheableNode dummyEntry;
+        Lodestar::autheableNode dummyEntry;
         dummyEntry.timeout = std::chrono::steady_clock::now();
         dummyEntry.sockfd = socket(AF_LOCAL, SOCK_STREAM, 0);
         dummyEntry.active = true;
@@ -307,7 +307,7 @@ TEST_CASE("Master - local networking logic"){
     }
     
     SUBCASE("cleanupQueue - entry deletion and thread sincronization"){
-        Lodestar::Master::autheableNode dummyEntry;
+        Lodestar::autheableNode dummyEntry;
         dummyEntry.active = false;
         dummyEntry.timeout = std::chrono::steady_clock::now();
         *master.nThreads = 1;
