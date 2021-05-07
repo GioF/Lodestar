@@ -61,12 +61,12 @@ namespace Lodestar{
             };
             
             /**
-             * A struct that represents a node.
+             * A struct that represents a connected node.
              *
-             * This is the common meaning of a node; a component in a distributed
-             * system. 
+             * Notice that this is the system common meaning of a "node";
+             * a component in a distributed system, not a leaf in a tree.
              * */
-            struct node {
+            struct connectedNode {
                 int socketFd;                          ///< The file descriptor of the nodes' socket.
                 std::vector<topicTreeRef> publishers;  ///< vector of topics the node publishes to.
                 std::vector<topicTreeRef> subscribers; ///< vector of topics the node subscribes to.
@@ -168,7 +168,7 @@ namespace Lodestar{
             semaphore authContinueSignal;        ///< sent from deletion thread to auth threads to notify deletion is done
             
             topicTreeNode* rootNode = new topicTreeNode; ///< tree of directories and topics.
-            std::vector<node> nodeArray;                 ///< array of nodes connected to this master.
+            std::list<connectedNode> nodeArray;        ///< array of nodes connected to this master.
 
             /**
              * Tokenizes a path string with "/" as delimiter.
@@ -382,7 +382,7 @@ namespace Lodestar{
                             it->authmsg.deserializeMessage();
                             bool granted = authenticate(static_cast<auth*>(it->authmsg.data));
                             if(granted){
-                                node newNode;
+                                connectedNode newNode;
                                 newNode.socketFd = it->sockfd;
                                 nodeArray.push_back(newNode);
                             }
@@ -412,26 +412,21 @@ namespace Lodestar{
             }
 
             /**
-             * Deletes inactive queue entries once a specific cutoff is met.
+             * Deletes inactive authQueue entries once a specific cutoff is met.
              *
-             * Will send [nThreads] signals via authAwaitSignal so that authentication
-             * threads are notified to wait, then wait for them to notify they are
-             * waiting; once it's done, deletes inactive entries and sends [nThreads]
-             * signals via authContinueSignal to notify threads deletion is done.
-             * The queueLock is also locked, so that sudden insertions can't result in
-             * undefined behaviour.
+             * Will call cleanList with the corresponding authentication semaphores
+             * once cutoff is met, locking [queue]
              *
              * DOES NOT LOOP BY ITSELF; sleeping and looping is done at the caller's
              * discretion.
              *
-             * @param queue que queue to be cleaned up.
              * @param cutoff the amount of inactive items after which they are delted.
              * */
-            void cleanupQueue(std::list<autheableNode>* queue, unsigned int cutoff){
+            void cleanAuthQueue(unsigned int cutoff){
                 //count amount of inactive queue entries
                 int count = 0;
                 std::list<autheableNode>::iterator it;
-                for(it = queue->begin(); count < cutoff && it != queue->end(); it++){
+                for(it = authQueue.begin(); count < cutoff && it != authQueue.end(); it++){
                     if(!it->active)
                         count++;
                 }
@@ -440,18 +435,35 @@ namespace Lodestar{
                 //delete inactive entries then notify threads deletion is done
                 if(count >= cutoff){
                     queueLock.lock();
-                    for(int n = 0; n < nThreads; n++)
-                        authAwaitSignal.post();
-
-                    for(int n = 0; n < nThreads; n++)
-                        authWaitingSignal.wait();
-
-                    queue->remove_if([](autheableNode item){return !item.active;});
-
-                    for(int n = 0; n < nThreads; n++)
-                        authContinueSignal.post();
+                    cleanList(&authQueue, nThreads, &authAwaitSignal, &authWaitingSignal, &authContinueSignal);
                     queueLock.unlock();
                 }
+            }
+
+            /**
+             * Removes [list] entries that have a false active property with proper
+             * signaling.
+             * 
+             * Will send [nSignals] signals via awaitSignal so that threads operating
+             * on this list are notified to wait, then wait for them to notify they are
+             * waiting; once it's done, deletes entries where the active attribute is false,
+             * and sends [nSignals] signals via continueSignal to notify that deletion is done.
+             * Does not prevent concurrent access of said list, only signals that a cleaning
+             * will take place, so it's recommended to lock a mutex before executing this
+             * function.
+             * */
+            template <class listType>
+            void cleanList(std::list<listType>* list, int nSignals, semaphore* awaitSignal, semaphore* waitingSignal, semaphore* continueSignal){
+                    for(int n = 0; n < nSignals; n++)
+                        awaitSignal->post();
+
+                    for(int n = 0; n < nSignals; n++)
+                        waitingSignal->wait();
+
+                    list->remove_if([](listType item){return !item.active;});
+
+                    for(int n = 0; n < nSignals; n++)
+                        continueSignal->post();
             }
     };
 }

@@ -30,7 +30,7 @@ namespace Lodestar{
             
             Master *master = NULL;
             topicTreeNode* rootNode = NULL;
-            std::vector<Lodestar::Master::node>* nodeArray = NULL;
+            std::list<Lodestar::Master::connectedNode>* nodeArray = NULL;
 
             //threading variables
             bool* isOk;
@@ -82,7 +82,7 @@ namespace Lodestar{
             }
             
             void cleanupQueue(int cutoff){
-                master->cleanupQueue(authQueue, cutoff);
+                master->cleanAuthQueue(cutoff);
             }
     };
 }
