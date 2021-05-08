@@ -38,6 +38,11 @@ namespace Lodestar{
                 passLock.unlock();
             }
 
+            /**
+             * Simply inserts an authenticable node into the base class' list.
+             *
+             * @param newNode the node to be inserted.
+             * */
             void insertNode(autheableNode newNode){
                 listLock.lock();
                 list.push_back(newNode);
@@ -49,8 +54,8 @@ namespace Lodestar{
              *
              * Will loop through the queue calling the recvMessage_for function of the
              * item's message object with [timeout] timeout and mark the entries that
-             * exceed their object's respective timeout as inactive so that the queue
-             * deletion thread can clean them up.
+             * exceed their object's respective timeout as inactive so that they can be
+             * cleaned up later.
              *
              * Every start of the main loop, it checks if the queue deletion thread has
              * sent a signal through authAwaitSignal; if so, notifies the deletion thread
@@ -143,18 +148,11 @@ namespace Lodestar{
             }
             
             /**
-             * Deletes inactive authQueue entries once a specific cutoff is met.
+             * Heuristic based on the amount of inactive entries of list.
              *
-             * Will call cleanList with the corresponding authentication semaphores
-             * once cutoff is met, locking [queue]
-             *
-             * DOES NOT LOOP BY ITSELF; sleeping and looping is done at the caller's
-             * discretion.
-             *
-             * @param cutoff the amount of inactive items after which they are delted.
+             * @returns true if amount of inactive entries is greater than cutoff.
              * */
             bool deletionHeuristic(){
-                //count amount of inactive queue entries
                 int count = 0;
                 std::list<autheableNode>::iterator it;
                 for(it = list.begin(); count < cutoff && it != list.end(); it++){
@@ -167,9 +165,9 @@ namespace Lodestar{
 
         private:
             int cutoff = 2;
-            std::string password = " ";
+            std::string password = " "; ///< the password this object authenticates each node against.
             std::mutex passLock;
-            std::list<connectedNode>* authenticatedList;
+            std::list<connectedNode>* authenticatedList; ///< a pointer to the authenticated node list.
 
             TEST_CASE_CLASS("authorizeNodes"){
                 std::list<connectedNode> connList;

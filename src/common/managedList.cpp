@@ -19,23 +19,33 @@ namespace Lodestar{
             std::list<listType> list;
             std::mutex listLock;
 
+            /**
+             * Calls list.remove_if to delete items that have a false active property.
+             *
+             * When reimplementing it, remember to call list.remove_if since
+             * this behaviour is expected.
+             * */
             virtual void deletionFunction(){
                     list.remove_if([](listType item){return !item.active;});
             }
 
+            /**
+             * Function called to decide if deletion process should take place or not.
+             *
+             * @returns if deletion process should start.
+             * */
             virtual bool deletionHeuristic() = 0;
 
             /**
-             * Removes [list] entries that have a false active property with proper
-             * signaling.
+             * Signals threads to stop operating on this list and calls deletionFunction()
+             * if deletionHeuristic() returns true.
              * 
              * Will send [nSignals] signals via awaitSignal so that threads operating
              * on this list are notified to wait, then wait for them to notify they are
-             * waiting; once it's done, deletes entries where the active attribute is false,
+             * waiting; once it's done, calls deletionFunction() to delete entries, then
              * and sends [nSignals] signals via continueSignal to notify that deletion is done.
-             * Does not prevent concurrent access of said list, only signals that a cleaning
-             * will take place, so it's recommended to lock a mutex before executing this
-             * function.
+             * To prevent concurrent write access to list, locks listLock and unlocks it once
+             * finished.
              * */
             void cleanList(){
                 if(deletionHeuristic()){
