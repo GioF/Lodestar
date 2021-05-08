@@ -5,6 +5,7 @@
 #include <string>
 #include <thread>
 #include <future>
+#include <atomic>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <boost/interprocess/sync/interprocess_semaphore.hpp>
@@ -68,7 +69,7 @@ namespace Lodestar{
              * @param queue the authenticable node queue.
              * @param timeout the time to be spent receiving each message.
              * */
-            void authorizeNodes(std::chrono::milliseconds timeout){
+            void authorizeNodes(){
                 std::list<autheableNode>::iterator it;
                 
                 //check for deletion thread signals
@@ -85,6 +86,7 @@ namespace Lodestar{
                 for(it = list.begin(); it != list.end(); ++it){
                     if(!it->active || !it->lock.try_lock())
                         continue;
+                    std::chrono::milliseconds timeout = std::chrono::milliseconds(iteratorTimeout);
 
                     msgStatus status;
                     try{
@@ -125,10 +127,6 @@ namespace Lodestar{
                 }
             };
 
-            void authorizeNodes(int timeInMillis){
-                authorizeNodes(std::chrono::milliseconds(timeInMillis));
-            }
-
             /**
              * Authenticates a node.
              *
@@ -165,6 +163,7 @@ namespace Lodestar{
 
         private:
             int cutoff = 2;
+            std::atomic<int> iteratorTimeout = 100;
             std::string password = " "; ///< the password this object authenticates each node against.
             std::mutex passLock;
             std::list<connectedNode>* authenticatedList; ///< a pointer to the authenticated node list.
@@ -182,7 +181,7 @@ namespace Lodestar{
                     close(dummyEntry.sockfd);
                     
                     authQueue.insertNode(dummyEntry);
-                    authQueue.authorizeNodes(100);
+                    authQueue.authorizeNodes();
 
                     REQUIRE(!authQueue.list.front().active);
                 }
@@ -215,7 +214,7 @@ namespace Lodestar{
                         authQueue.list.front().timeout = std::chrono::steady_clock::now();
                         
                         //try to authorize without sending nothing so it times out
-                        authQueue.authorizeNodes(100);
+                        authQueue.authorizeNodes();
                         REQUIRE(!authQueue.list.front().active);
                     }
                     
@@ -224,7 +223,7 @@ namespace Lodestar{
                         auto entryTimeout = std::chrono::steady_clock::now() + std::chrono::minutes(1);
                         authQueue.list.front().timeout = entryTimeout;
                         
-                        authQueue.authorizeNodes(100);
+                        authQueue.authorizeNodes();
                         REQUIRE(authQueue.list.front().active);
                     }
                     
@@ -237,7 +236,7 @@ namespace Lodestar{
                         int dummybuf = 10;
                         auto sent = send(dummySock, &dummybuf, 2, 0);
                         
-                        authQueue.authorizeNodes(100);
+                        authQueue.authorizeNodes();
                         REQUIRE(authQueue.list.front().active);
                     }
                     
@@ -255,7 +254,7 @@ namespace Lodestar{
                         
                         //authorize and check if it was correctly added
                         //to node list
-                        authQueue.authorizeNodes(100);
+                        authQueue.authorizeNodes();
                         REQUIRE(!authQueue.list.front().active);
                         REQUIRE(connList.size() == 1);
                     }
