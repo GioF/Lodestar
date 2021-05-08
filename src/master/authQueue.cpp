@@ -168,7 +168,7 @@ namespace Lodestar{
             std::mutex passLock;
             std::list<connectedNode>* authenticatedList; ///< a pointer to the authenticated node list.
 
-            TEST_CASE_CLASS("authorizeNodes"){
+            TEST_CASE_CLASS("AuthQueue - internal business logic"){
                 std::list<connectedNode> connList;
                 AuthQueue authQueue = AuthQueue(connList);
                 
@@ -177,7 +177,7 @@ namespace Lodestar{
                 dummyEntry.sockfd = socket(AF_LOCAL, SOCK_STREAM, 0);
                 dummyEntry.active = true;
                 
-                SUBCASE("general socket error"){
+                SUBCASE("general socket error - error treatment"){
                     close(dummyEntry.sockfd);
                     
                     authQueue.insertNode(dummyEntry);
@@ -186,7 +186,7 @@ namespace Lodestar{
                     REQUIRE(!authQueue.list.front().active);
                 }
                 
-                SUBCASE("default operation"){
+                SUBCASE("default operation - entry treatment"){
                     sockaddr_un sockaddr;
                     int listeningSocket = createBoundSocket("/tmp/authTest.soc", &sockaddr);
                     auto futureSocket = std::async(std::launch::async, &acceptOne, listeningSocket, &sockaddr);
@@ -258,6 +258,44 @@ namespace Lodestar{
                         REQUIRE(!authQueue.list.front().active);
                         REQUIRE(connList.size() == 1);
                     }
+                }
+
+                SUBCASE("list cleanup - entry deletion and thread sincronization"){
+                    Lodestar::autheableNode dummyEntry;
+                    dummyEntry.active = false;
+                    dummyEntry.timeout = std::chrono::steady_clock::now();
+                    authQueue.nSignals = 1;
+                    
+                    //insert two entries and see if they are there
+                    authQueue.list.push_back(dummyEntry);
+                    authQueue.list.push_back(dummyEntry);
+                    REQUIRE(authQueue.list.size() == 2);
+                    
+                    //signal deletion function that the auth thread is
+                    //waiting and then call cleanup
+                    authQueue.waitingSignal.post();
+                    authQueue.cutoff = 1;
+                    authQueue.cleanList();
+                    
+                    //check if only one await signal was sent
+                    REQUIRE(authQueue.awaitSignal.try_wait());
+                    REQUIRE(!authQueue.awaitSignal.try_wait());
+                    
+                    //check if only one continue signal was sent
+                    REQUIRE(authQueue.continueSignal.try_wait());
+                    REQUIRE(!authQueue.continueSignal.try_wait());
+                    
+                    //check that both entries were deleted
+                    REQUIRE(authQueue.list.size() == 0);
+                    
+                    //insert another entry
+                    authQueue.list.push_back(dummyEntry);
+                    REQUIRE(authQueue.list.size() == 1);
+                    
+                    //check if it was deleted again
+                    authQueue.waitingSignal.post();
+                    authQueue.cleanList();
+                    REQUIRE(authQueue.list.size() == 0);
                 }
             };
     };

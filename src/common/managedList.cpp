@@ -32,6 +32,10 @@ namespace Lodestar{
             /**
              * Function called to decide if deletion process should take place or not.
              *
+             * This function should only return true at the when cleaning
+             * the list up will be a net benefit, so define this heuristic
+             * cleverly (but in a way that can still be read by poor souls later)
+             * 
              * @returns if deletion process should start.
              * */
             virtual bool deletionHeuristic() = 0;
