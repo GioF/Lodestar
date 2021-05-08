@@ -18,11 +18,18 @@ namespace Lodestar{
         public:
             AuthQueue(std::list<connectedNode>& connList){
                 authenticatedList = &connList;
+                cutoff = 5;
+            }
+
+            AuthQueue(std::list<connectedNode>& connList, int _cutoff){
+                authenticatedList = &connList;
+                cutoff = _cutoff;
             }
 
             AuthQueue(AuthQueue&& moved){
                 authenticatedList = moved.authenticatedList;
                 password = std::move(moved.password);
+                cutoff = moved.cutoff;
             }
 
             void setPass(std::string pass){
@@ -146,7 +153,7 @@ namespace Lodestar{
              *
              * @param cutoff the amount of inactive items after which they are delted.
              * */
-            void cleanAuthQueue(unsigned int cutoff){
+            bool deletionHeuristic(){
                 //count amount of inactive queue entries
                 int count = 0;
                 std::list<autheableNode>::iterator it;
@@ -155,16 +162,11 @@ namespace Lodestar{
                         count++;
                 }
                 
-                //notify auth threads to wait, block until they are all waiting,
-                //delete inactive entries then notify threads deletion is done
-                if(count >= cutoff){
-                    listLock.lock();
-                    cleanList();
-                    listLock.unlock();
-                }
+                return count >= cutoff;
             }
 
         private:
+            int cutoff = 2;
             std::string password = " ";
             std::mutex passLock;
             std::list<connectedNode>* authenticatedList;

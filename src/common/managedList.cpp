@@ -1,5 +1,6 @@
 #include <list>
 #include <mutex>
+#include <utility>
 #include <boost/interprocess/sync/interprocess_semaphore.hpp>
 
 using semaphore = boost::interprocess::interprocess_semaphore;
@@ -8,7 +9,7 @@ namespace Lodestar{
     template <class listType>
     class ManagedList{
         public:
-            ManagedList(): awaitSignal(0), waitingSignal(0), continueSignal(0){}; 
+            ManagedList(): awaitSignal(0), waitingSignal(0), continueSignal(0){};
 
             int nSignals;
             semaphore awaitSignal;
@@ -18,6 +19,16 @@ namespace Lodestar{
             std::list<listType> list;
             std::mutex listLock;
 
+            virtual bool deletionHeuristic() = 0;
+
+            void listCleanup(){
+                if(deletionHeuristic()){
+                    listLock.lock();
+                    cleanList();
+                    listLock.unlock();
+                }
+            }
+            
             /**
              * Removes [list] entries that have a false active property with proper
              * signaling.
