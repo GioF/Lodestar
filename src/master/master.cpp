@@ -16,6 +16,7 @@
 #include <boost/interprocess/sync/interprocess_semaphore.hpp>
 #include "../common/communication.cpp"
 #include "../common/types.h"
+#include "authQueue.cpp"
 #include "types.hpp"
 
 using semaphore = boost::interprocess::interprocess_semaphore;
@@ -43,8 +44,9 @@ namespace Lodestar{
              *
              * @param sockPath the desired path to be used with the socket
              * */
-            Master(std::string sockPath):authAwaitSignal(0), authWaitingSignal(0), authContinueSignal(0){
+            Master(std::string sockPath){
                 setupListener(sockPath);
+                gracePeriod = std::chrono::seconds(20);
             }
 
             /**
@@ -52,10 +54,11 @@ namespace Lodestar{
              *
              * @param startNode boolean that informs constructor if listener should be started.
              * */
-            Master(bool startListener = false): authAwaitSignal(0), authWaitingSignal(0), authContinueSignal(0){
+            Master(bool startListener = false){
                 // TODO: function should also read config files for default
                 // socket path and call Master(std::string sockpath)
                 // with said path, with configurable timeout and number of threads
+                gracePeriod = std::chrono::seconds(20);
                 if(startListener){
                     std::string socketPath = std::string(getenv("HOME"));
                     socketPath.append("/.local/share/lodestar/mastersocket");
@@ -91,18 +94,12 @@ namespace Lodestar{
             sockaddr_un sockaddr;
 
             std::thread *listeningThread = NULL; ///< pointer to listener thread
-            std::string password = " ";          ///< password that is authenticated against
-            std::list<autheableNode> authQueue;  ///< queue of sockets awaiting authentication
             std::chrono::seconds gracePeriod;    ///< time after which nodes are disconnected if unauthenticated
-            std::mutex queueLock;
-            int nThreads = 0;                    ///< amount of running threads
-            semaphore authAwaitSignal;           ///< sent from deletion thread to auth threads to notify them to wait
-            semaphore authWaitingSignal;         ///< sent from auth thread to deletion thread to notify they are waiting
-            semaphore authContinueSignal;        ///< sent from deletion thread to auth threads to notify deletion is done
             
             topicTreeNode* rootNode = new topicTreeNode; ///< tree of directories and topics.
             std::list<connectedNode> nodeArray;        ///< array of nodes connected to this master.
-
+            AuthQueue authQueue = AuthQueue(nodeArray);
+            
             /**
              * Tokenizes a path string with "/" as delimiter.
              *
@@ -241,9 +238,7 @@ namespace Lodestar{
                         newNode.sockfd = newSockfd;
                         newNode.timeout = std::chrono::steady_clock::now() + gracePeriod;
 
-                        queueLock.lock();
-                        authQueue.push_back(newNode);
-                        queueLock.unlock();
+                        authQueue.insertNode(newNode);
                     }
                     if(rv < 0){
                         // TODO: proper error logging
@@ -252,152 +247,6 @@ namespace Lodestar{
                 }
             };
 
-            /**
-             * Queue authentication function.
-             *
-             * Will loop through the queue calling the recvMessage_for function of the
-             * item's message object with [timeout] timeout and mark the entries that
-             * exceed their object's respective timeout as inactive so that the queue
-             * deletion thread can clean them up.
-             *
-             * Every start of the main loop, it checks if the queue deletion thread has
-             * sent a signal through authAwaitSignal; if so, notifies the deletion thread
-             * that it is currently waiting for the deletion to be complete and then waits
-             * for the signal that it is complete.
-             *
-             * DOES NOT LOOP BY ITSELF; sleeping and looping is done at the caller's
-             * discretion.
-             *
-             * @param queue the authenticable node queue.
-             * @param timeout the time to be spent receiving each message.
-             * */
-            void authorizeNodes(std::list<autheableNode>* queue, std::chrono::milliseconds timeout){
-                std::list<autheableNode>::iterator it;
-                
-                //check for deletion thread signals
-                // NOTE: This should maybe be extracted since looping and sleeping
-                // is already done at the caller's discretion
-                bool result = authAwaitSignal.try_wait();
-                if(result){
-                    authWaitingSignal.post(); //notify deletion thread that this thread is waiting
-                    authContinueSignal.wait(); //wait until deletion thread signals to continue
-                }
-                
-                
-                //loop auth queue and try to authenticate each one respecting timeout
-                for(it = queue->begin(); it != queue->end(); ++it){
-                    if(!it->active || !it->lock.try_lock())
-                        continue;
-
-                    msgStatus status;
-                    try{
-                        status = it->authmsg.recvMessage_for(it->sockfd, timeout);
-                    }catch(int err){
-                        //mark inactive it socket errors out
-                        it->active = false;
-                        it->lock.unlock();
-                        continue;
-                    }
-                    
-                    switch(status){
-                        //if still receiving or not receiving at all
-                        case msgStatus::receiving:
-                        case msgStatus::nomsg:{
-                            if(it->timeout > std::chrono::steady_clock::now())
-                                break;
-                            else{
-                                it->active = false; //mark for deletion if timeout has passed
-                                break;
-                            }
-                        }
-                            //if just received
-                        case msgStatus::ok:{
-                            it->authmsg.deserializeMessage();
-                            bool granted = authenticate(static_cast<auth*>(it->authmsg.data));
-                            if(granted){
-                                connectedNode newNode;
-                                newNode.socketFd = it->sockfd;
-                                nodeArray.push_back(newNode);
-                            }
-                            it->active = false;
-                            break;
-                        }
-                    }
-                    
-                    it->lock.unlock();
-                }
-            };
-
-            /**
-             * Authenticates a node.
-             *
-             * For now just a placeholder until i finish implementing the core authentication
-             * pipeline.
-             *
-             * @param node the auth message sent by the node.
-             * @returns true if the node was granted permission, false if not.
-             * */
-            bool authenticate(auth* node){
-                std::string equivString(node->identifier);
-                if(equivString == password)
-                    return true;
-                else return false;
-            }
-
-            /**
-             * Deletes inactive authQueue entries once a specific cutoff is met.
-             *
-             * Will call cleanList with the corresponding authentication semaphores
-             * once cutoff is met, locking [queue]
-             *
-             * DOES NOT LOOP BY ITSELF; sleeping and looping is done at the caller's
-             * discretion.
-             *
-             * @param cutoff the amount of inactive items after which they are delted.
-             * */
-            void cleanAuthQueue(unsigned int cutoff){
-                //count amount of inactive queue entries
-                int count = 0;
-                std::list<autheableNode>::iterator it;
-                for(it = authQueue.begin(); count < cutoff && it != authQueue.end(); it++){
-                    if(!it->active)
-                        count++;
-                }
-
-                //notify auth threads to wait, block until they are all waiting,
-                //delete inactive entries then notify threads deletion is done
-                if(count >= cutoff){
-                    queueLock.lock();
-                    cleanList(&authQueue, nThreads, &authAwaitSignal, &authWaitingSignal, &authContinueSignal);
-                    queueLock.unlock();
-                }
-            }
-
-            /**
-             * Removes [list] entries that have a false active property with proper
-             * signaling.
-             * 
-             * Will send [nSignals] signals via awaitSignal so that threads operating
-             * on this list are notified to wait, then wait for them to notify they are
-             * waiting; once it's done, deletes entries where the active attribute is false,
-             * and sends [nSignals] signals via continueSignal to notify that deletion is done.
-             * Does not prevent concurrent access of said list, only signals that a cleaning
-             * will take place, so it's recommended to lock a mutex before executing this
-             * function.
-             * */
-            template <class listType>
-            void cleanList(std::list<listType>* list, int nSignals, semaphore* awaitSignal, semaphore* waitingSignal, semaphore* continueSignal){
-                    for(int n = 0; n < nSignals; n++)
-                        awaitSignal->post();
-
-                    for(int n = 0; n < nSignals; n++)
-                        waitingSignal->wait();
-
-                    list->remove_if([](listType item){return !item.active;});
-
-                    for(int n = 0; n < nSignals; n++)
-                        continueSignal->post();
-            }
     };
 }
 

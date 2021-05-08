@@ -3,6 +3,7 @@
 #include <sys/socket.h>
 #include <boost/interprocess/sync/interprocess_semaphore.hpp>
 #include "master.cpp"
+#include "authQueue.cpp"
 #include "../common/communication.cpp"
 #include "../common/doctest.h"
 #include "../common/types.h"
@@ -37,23 +38,13 @@ namespace Lodestar{
             int* sockfd;
             sockaddr_un* sockaddr;
             std::thread *listeningThread = NULL;
-            std::list<Lodestar::autheableNode>* authQueue = NULL;
-            int* nThreads;
-            semaphore* authAwaitSignal;
-            semaphore* authWaitingSignal;
-            semaphore* authContinueSignal;
 
             void setupPointers(){
                 rootNode = master->rootNode;
                 nodeArray = &(master->nodeArray);
-                authQueue = &(master->authQueue);
                 isOk = &(master->isOk);
                 sockfd = &(master->sockfd);
                 sockaddr = &(master->sockaddr);
-                nThreads = &(master->nThreads);
-                authAwaitSignal = &(master->authAwaitSignal);
-                authWaitingSignal = &(master->authWaitingSignal);
-                authContinueSignal = &(master->authContinueSignal);
             };
             
             //mirroed(?) master class private methods
@@ -75,14 +66,6 @@ namespace Lodestar{
 
             void attachListener(){
                 listeningThread = master->listeningThread;
-            }
-
-            void authorizeNodes(int timeout){
-                master->authorizeNodes(authQueue, std::chrono::milliseconds(timeout));
-            }
-            
-            void cleanupQueue(int cutoff){
-                master->cleanAuthQueue(cutoff);
             }
     };
 }
@@ -217,129 +200,11 @@ TEST_CASE("Master - local networking logic"){
         master.listeningThread->join();
 
         REQUIRE(rc == 0);
-        REQUIRE(master.authQueue->size() == 1);
-        REQUIRE(master.authQueue->front().sockfd > 0);
-    }
-
-    SUBCASE("authorizeNodes"){
-        Lodestar::autheableNode dummyEntry;
-        dummyEntry.timeout = std::chrono::steady_clock::now();
-        dummyEntry.sockfd = socket(AF_LOCAL, SOCK_STREAM, 0);
-        dummyEntry.active = true;
-
-        sockaddr_un mSockaddr;
-        mSockaddr.sun_family = AF_LOCAL;
-        std::strcpy(mSockaddr.sun_path, "listener.socket");
-
-        SUBCASE("general socket error"){
-            close(dummyEntry.sockfd);
-
-            master.authQueue->push_back(dummyEntry);
-            master.authorizeNodes(100);
-
-            REQUIRE(!master.authQueue->front().active);
-        }
-
-        SUBCASE("default operation"){
-            //connect a dummy socket and check if it's on the queue
-            int dummySock = socket(AF_LOCAL, SOCK_STREAM, 0);
-            connect(dummySock, (struct sockaddr*) &mSockaddr, sizeof(sockaddr_un));
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));
-
-            //make socket timeout after blocking for 100 milliseconds
-            timeval timeout;
-            timeout.tv_sec = 0;
-            timeout.tv_usec = 100000;
-            setsockopt(master.authQueue->front().sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeval));
-            
-            REQUIRE(master.authQueue->front().active);
-
-            SUBCASE("message timed out"){
-                //set up queue entry to timeout immediately
-                master.authQueue->front().timeout = std::chrono::steady_clock::now();
-                
-                //try to authorize without sending nothing so it times out
-                master.authorizeNodes(100);
-                REQUIRE(!master.authQueue->front().active);
-            }
-
-            SUBCASE("no message sent"){
-                //set up very long timeout so it doesn't timeout
-                auto entryTimeout = std::chrono::steady_clock::now() + std::chrono::minutes(1);
-                master.authQueue->front().timeout = entryTimeout;
-
-                master.authorizeNodes(100);
-                REQUIRE(master.authQueue->front().active);
-            }
-
-            SUBCASE("unfinished message"){
-                //set up very long timeout so it doesn't timeout
-                auto entryTimeout = std::chrono::steady_clock::now() + std::chrono::minutes(1);
-                master.authQueue->front().timeout = entryTimeout;
-                
-                //send size header and nothing more
-                int dummybuf = 10;
-                auto sent = send(dummySock, &dummybuf, 2, 0);
-                
-                master.authorizeNodes(100);
-                REQUIRE(master.authQueue->front().active);
-            }
-
-            SUBCASE("fully received message"){
-                //set up dummy auth message
-                Lodestar::auth dummyAuth;
-                dummyAuth.size = 2;
-                char emptyIdentifier[] = " ";
-                dummyAuth.identifier = emptyIdentifier;
-
-                //send it
-                Lodestar::message dummyMsg;
-                dummyMsg.data = &dummyAuth;
-                dummyMsg.sendMessage(dummySock);
-
-                //authorize and check if it was correctly added
-                //to node list
-                master.authorizeNodes(100);
-                REQUIRE(!master.authQueue->front().active);
-                REQUIRE(master.nodeArray->size() == 1);
-            }
-        }
+        // can't do this now, once i extract
+        // the node listening pipeline into a
+        // standalone class this can be done again
+        //REQUIRE(master.authQueue->size() == 1);
+        //REQUIRE(master.authQueue->front().sockfd > 0);
     }
     
-    SUBCASE("cleanupQueue - entry deletion and thread sincronization"){
-        Lodestar::autheableNode dummyEntry;
-        dummyEntry.active = false;
-        dummyEntry.timeout = std::chrono::steady_clock::now();
-        *master.nThreads = 1;
-
-        //insert two entries and see if they are there
-        master.authQueue->push_back(dummyEntry);
-        master.authQueue->push_back(dummyEntry);
-        REQUIRE(master.authQueue->size() == 2);
-
-        //signal deletion function that the auth thread is
-        //waiting and then call cleanup
-        master.authWaitingSignal->post();
-        master.cleanupQueue(1);
-
-        //check if only one await signal was sent
-        REQUIRE(master.authAwaitSignal->try_wait());
-        REQUIRE(!master.authAwaitSignal->try_wait());
-
-        //check if only one continue signal was sent
-        REQUIRE(master.authContinueSignal->try_wait());
-        REQUIRE(!master.authContinueSignal->try_wait());
-
-        //check that both entries were deleted
-        REQUIRE(master.authQueue->size() == 0);
-
-        //insert another entry
-        master.authQueue->push_back(dummyEntry);
-        REQUIRE(master.authQueue->size() == 1);
-
-        //check if it was deleted again
-        master.authWaitingSignal->post();
-        master.cleanupQueue(1);
-        REQUIRE(master.authQueue->size() == 0);
-    }
 }
