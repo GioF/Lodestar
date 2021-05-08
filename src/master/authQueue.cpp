@@ -169,6 +169,98 @@ namespace Lodestar{
             std::mutex passLock;
             std::list<connectedNode>* authenticatedList;
 
+            TEST_CASE_CLASS("authorizeNodes"){
+                std::list<connectedNode> connList;
+                AuthQueue authQueue = AuthQueue(connList);
+                
+                Lodestar::autheableNode dummyEntry;
+                dummyEntry.timeout = std::chrono::steady_clock::now();
+                dummyEntry.sockfd = socket(AF_LOCAL, SOCK_STREAM, 0);
+                dummyEntry.active = true;
+                
+                SUBCASE("general socket error"){
+                    close(dummyEntry.sockfd);
+                    
+                    authQueue.insertNode(dummyEntry);
+                    authQueue.authorizeNodes(100);
+
+                    REQUIRE(!authQueue.list.front().active);
+                }
+                
+                SUBCASE("default operation"){
+                    sockaddr_un sockaddr;
+                    int listeningSocket = createBoundSocket("/tmp/authTest.soc", &sockaddr);
+                    auto futureSocket = std::async(std::launch::async, &acceptOne, listeningSocket, &sockaddr);
+                    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+                    
+                    //connect a dummy socket and put it on the queue
+                    int dummySock = socket(AF_LOCAL, SOCK_STREAM, 0);
+                    connect(dummySock, (struct sockaddr*) &sockaddr, sizeof(sockaddr_un));
+                    int rxSock = futureSocket.get();
+
+                    autheableNode dummyNode;
+                    dummyNode.active = true;
+                    dummyNode.sockfd = rxSock;
+                    dummyNode.timeout = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+                    authQueue.insertNode(dummyNode);
+                    
+                    //make socket timeout after blocking for 100 milliseconds
+                    timeval timeout;
+                    timeout.tv_sec = 0;
+                    timeout.tv_usec = 100000;
+                    setsockopt(authQueue.list.front().sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeval));
+                    
+                    SUBCASE("message timed out"){
+                        //set up queue entry to timeout immediately
+                        authQueue.list.front().timeout = std::chrono::steady_clock::now();
+                        
+                        //try to authorize without sending nothing so it times out
+                        authQueue.authorizeNodes(100);
+                        REQUIRE(!authQueue.list.front().active);
+                    }
+                    
+                    SUBCASE("no message sent"){
+                        //set up very long timeout so it doesn't timeout
+                        auto entryTimeout = std::chrono::steady_clock::now() + std::chrono::minutes(1);
+                        authQueue.list.front().timeout = entryTimeout;
+                        
+                        authQueue.authorizeNodes(100);
+                        REQUIRE(authQueue.list.front().active);
+                    }
+                    
+                    SUBCASE("unfinished message"){
+                        //set up very long timeout so it doesn't timeout
+                        auto entryTimeout = std::chrono::steady_clock::now() + std::chrono::minutes(1);
+                        authQueue.list.front().timeout = entryTimeout;
+                        
+                        //send size header and nothing more
+                        int dummybuf = 10;
+                        auto sent = send(dummySock, &dummybuf, 2, 0);
+                        
+                        authQueue.authorizeNodes(100);
+                        REQUIRE(authQueue.list.front().active);
+                    }
+                    
+                    SUBCASE("fully received message"){
+                        //set up dummy auth message
+                        Lodestar::auth dummyAuth;
+                        dummyAuth.size = 2;
+                        char emptyIdentifier[] = " ";
+                        dummyAuth.identifier = emptyIdentifier;
+                        
+                        //send it
+                        Lodestar::message dummyMsg;
+                        dummyMsg.data = &dummyAuth;
+                        dummyMsg.sendMessage(dummySock);
+                        
+                        //authorize and check if it was correctly added
+                        //to node list
+                        authQueue.authorizeNodes(100);
+                        REQUIRE(!authQueue.list.front().active);
+                        REQUIRE(connList.size() == 1);
+                    }
+                }
+            };
     };
 }
 #endif
