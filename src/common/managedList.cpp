@@ -19,16 +19,12 @@ namespace Lodestar{
             std::list<listType> list;
             std::mutex listLock;
 
+            virtual void deletionFunction(){
+                    list.remove_if([](listType item){return !item.active;});
+            }
+
             virtual bool deletionHeuristic() = 0;
 
-            void listCleanup(){
-                if(deletionHeuristic()){
-                    listLock.lock();
-                    cleanList();
-                    listLock.unlock();
-                }
-            }
-            
             /**
              * Removes [list] entries that have a false active property with proper
              * signaling.
@@ -42,16 +38,20 @@ namespace Lodestar{
              * function.
              * */
             void cleanList(){
-                for(int n = 0; n < nSignals; n++)
-                    awaitSignal.post();
-                
-                for(int n = 0; n < nSignals; n++)
-                    waitingSignal.wait();
-                
-                list.remove_if([](listType item){return !item.active;});
-                
-                for(int n = 0; n < nSignals; n++)
-                    continueSignal.post();
+                if(deletionHeuristic()){
+                    listLock.lock();
+                    for(int n = 0; n < nSignals; n++)
+                        awaitSignal.post();
+                    
+                    for(int n = 0; n < nSignals; n++)
+                        waitingSignal.wait();
+
+                    deletionFunction();
+                    
+                    for(int n = 0; n < nSignals; n++)
+                        continueSignal.post();
+                    listLock.unlock();
+                }
             }
     };
 }
