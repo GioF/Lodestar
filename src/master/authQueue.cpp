@@ -51,25 +51,53 @@ namespace Lodestar{
             }
 
             /**
-             * Queue authentication function.
+             * Authenticates a node.
+             *
+             * For now just a placeholder until i finish implementing the core authentication
+             * pipeline.
+             *
+             * @param node the auth message sent by the node.
+             * @returns true if the node was granted permission, false if not.
+             * */
+            bool authenticate(auth* node){
+                bool returnVal;
+                std::string equivString(node->identifier);
+                passLock.lock();
+                returnVal = equivString == password;
+                passLock.unlock();
+                return returnVal;
+            }
+            
+            /**
+             * Heuristic based on the amount of inactive entries of list.
+             *
+             * @returns true if amount of inactive entries is greater than cutoff.
+             * */
+            bool deletionHeuristic(){
+                int count = 0;
+                std::list<autheableNode>::iterator it;
+                for(it = list.begin(); count < cutoff && it != list.end(); it++){
+                    if(!it->active)
+                        count++;
+                }
+                
+                return count >= cutoff;
+            }
+
+            /**
+             * Manage function that authenticates nodes.
              *
              * Will loop through the queue calling the recvMessage_for function of the
-             * item's message object with [timeout] timeout and mark the entries that
-             * exceed their object's respective timeout as inactive so that they can be
-             * cleaned up later.
+             * item's message object with a timeout of [iteratorTimeout] milliseconds
+             * and mark the entries that exceed their object's respective timeout
+             * as inactive so that they can be cleaned up later.
              *
              * Every start of the main loop, it checks if the queue deletion thread has
              * sent a signal through authAwaitSignal; if so, notifies the deletion thread
              * that it is currently waiting for the deletion to be complete and then waits
              * for the signal that it is complete.
-             *
-             * DOES NOT LOOP BY ITSELF; sleeping and looping is done at the caller's
-             * discretion.
-             *
-             * @param queue the authenticable node queue.
-             * @param timeout the time to be spent receiving each message.
              * */
-            void authorizeNodes(){
+            void manage(){
                 std::list<autheableNode>::iterator it;
                 
                 //check for deletion thread signals
@@ -127,40 +155,6 @@ namespace Lodestar{
                 }
             };
 
-            /**
-             * Authenticates a node.
-             *
-             * For now just a placeholder until i finish implementing the core authentication
-             * pipeline.
-             *
-             * @param node the auth message sent by the node.
-             * @returns true if the node was granted permission, false if not.
-             * */
-            bool authenticate(auth* node){
-                bool returnVal;
-                std::string equivString(node->identifier);
-                passLock.lock();
-                returnVal = equivString == password;
-                passLock.unlock();
-                return returnVal;
-            }
-            
-            /**
-             * Heuristic based on the amount of inactive entries of list.
-             *
-             * @returns true if amount of inactive entries is greater than cutoff.
-             * */
-            bool deletionHeuristic(){
-                int count = 0;
-                std::list<autheableNode>::iterator it;
-                for(it = list.begin(); count < cutoff && it != list.end(); it++){
-                    if(!it->active)
-                        count++;
-                }
-                
-                return count >= cutoff;
-            }
-
         private:
             int cutoff = 2;
             std::atomic<int> iteratorTimeout = 100;
@@ -181,7 +175,7 @@ namespace Lodestar{
                     close(dummyEntry.sockfd);
                     
                     authQueue.insertNode(dummyEntry);
-                    authQueue.authorizeNodes();
+                    authQueue.manage();
 
                     REQUIRE(!authQueue.list.front().active);
                 }
@@ -214,7 +208,7 @@ namespace Lodestar{
                         authQueue.list.front().timeout = std::chrono::steady_clock::now();
                         
                         //try to authorize without sending nothing so it times out
-                        authQueue.authorizeNodes();
+                        authQueue.manage();
                         REQUIRE(!authQueue.list.front().active);
                     }
                     
@@ -223,7 +217,7 @@ namespace Lodestar{
                         auto entryTimeout = std::chrono::steady_clock::now() + std::chrono::minutes(1);
                         authQueue.list.front().timeout = entryTimeout;
                         
-                        authQueue.authorizeNodes();
+                        authQueue.manage();
                         REQUIRE(authQueue.list.front().active);
                     }
                     
@@ -236,7 +230,7 @@ namespace Lodestar{
                         int dummybuf = 10;
                         auto sent = send(dummySock, &dummybuf, 2, 0);
                         
-                        authQueue.authorizeNodes();
+                        authQueue.manage();
                         REQUIRE(authQueue.list.front().active);
                     }
                     
@@ -254,7 +248,7 @@ namespace Lodestar{
                         
                         //authorize and check if it was correctly added
                         //to node list
-                        authQueue.authorizeNodes();
+                        authQueue.manage();
                         REQUIRE(!authQueue.list.front().active);
                         REQUIRE(connList.size() == 1);
                     }

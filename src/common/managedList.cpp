@@ -41,6 +41,14 @@ namespace Lodestar{
             virtual bool deletionHeuristic() = 0;
 
             /**
+             * Function called to iterate over list and manage its entries.
+             *
+             * Do not make this function loop; it is used inside a loop until it is sent
+             * a signal to stop due to it not being needed anymore.
+             * */
+            virtual void manage() = 0;
+            
+            /**
              * Signals threads to stop operating on this list and calls deletionFunction()
              * if deletionHeuristic() returns true.
              * 
