@@ -1,6 +1,9 @@
 #include <list>
 #include <mutex>
 #include <utility>
+#include <atomic>
+#include <chrono>
+#include <thread>
 #include <boost/interprocess/sync/interprocess_semaphore.hpp>
 
 using semaphore = boost::interprocess::interprocess_semaphore;
@@ -11,13 +14,14 @@ namespace Lodestar{
         public:
             ManagedList(): awaitSignal(0), waitingSignal(0), continueSignal(0){};
 
-            int nSignals;
+            std::mutex threadLock;     ///< mutex to control thread starting and stopping
+            std::atomic<int> nSignals;
             semaphore awaitSignal;
             semaphore waitingSignal;
             semaphore continueSignal;
 
             std::list<listType> list;
-            std::mutex listLock;
+            std::mutex listLock;      ///< mutext to control list addition
 
             /**
              * Calls list.remove_if to delete items that have a false active property.
@@ -47,6 +51,47 @@ namespace Lodestar{
              * a signal to stop due to it not being needed anymore.
              * */
             virtual void manage() = 0;
+
+            /**
+             * Calls manage() until it is sent a signal to stop.
+             *
+             * To safeguard against starting or stopping the manage() loop while
+             * cleanList() executes, it uses threadLock() before incrementing or
+             * decrementing nSignals. This probably isn't safe.
+             * */
+            void iterate(){
+                threadLock.lock();
+                nSignals++;
+                threadLock.unlock();
+
+                while(!stopSignal.try_wait()){
+                    //check if there is a signal to wait for deletion
+                    if(awaitSignal.try_wait()){
+                        //notify deletion thread that this thread is waiting
+                        waitingSignal.post();
+                        //wait until deletion thread signals to continue
+                        continueSignal.wait(); 
+                    }
+
+                    manage();
+                }
+
+                if(threadLock.try_lock()){
+                    nSignals--;
+                    threadLock.unlock();
+                }else{
+                    //behave as a waiting thread (so that
+                    //cleanList() functions correctly), then
+                    //subtract number of running threads
+                    awaitSignal.wait();
+                    waitingSignal.post();
+                    continueSignal.wait();
+
+                    threadLock.lock();
+                    nSignals--;
+                    threadLock.lock();
+                }
+            }
             
             /**
              * Signals threads to stop operating on this list and calls deletionFunction()
@@ -56,12 +101,15 @@ namespace Lodestar{
              * on this list are notified to wait, then wait for them to notify they are
              * waiting; once it's done, calls deletionFunction() to delete entries, then
              * and sends [nSignals] signals via continueSignal to notify that deletion is done.
-             * To prevent concurrent write access to list, locks listLock and unlocks it once
-             * finished.
+             *
+             * To prevent concurrent write access to list or thread creation durint list cleanup,
+             * locks listLock and threadLock, then unlocks them once done.
              * */
             void cleanList(){
                 if(deletionHeuristic()){
                     listLock.lock();
+                    threadLock.lock();
+
                     for(int n = 0; n < nSignals; n++)
                         awaitSignal.post();
                     
@@ -72,7 +120,13 @@ namespace Lodestar{
                     
                     for(int n = 0; n < nSignals; n++)
                         continueSignal.post();
+
+                    threadLock.unlock();
                     listLock.unlock();
+
+                    //i don't know why i want to put this here, but something
+                    //tells me this will fix something that i don't know yet
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 }
             }
     };

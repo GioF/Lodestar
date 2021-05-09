@@ -100,21 +100,11 @@ namespace Lodestar{
             void manage(){
                 std::list<autheableNode>::iterator it;
                 
-                //check for deletion thread signals
-                // NOTE: This should maybe be extracted since looping and sleeping
-                // is already done at the caller's discretion
-                bool result = awaitSignal.try_wait();
-                if(result){
-                    waitingSignal.post(); //notify deletion thread that this thread is waiting
-                    continueSignal.wait(); //wait until deletion thread signals to continue
-                }
-                
-                
                 //loop auth queue and try to authenticate each one respecting timeout
                 for(it = list.begin(); it != list.end(); ++it){
                     if(!it->active || !it->lock.try_lock())
                         continue;
-                    std::chrono::milliseconds timeout = std::chrono::milliseconds(iteratorTimeout);
+                    auto timeout = std::chrono::milliseconds(iteratorTimeout);
 
                     msgStatus status;
                     try{
@@ -270,14 +260,6 @@ namespace Lodestar{
                     authQueue.waitingSignal.post();
                     authQueue.cutoff = 1;
                     authQueue.cleanList();
-                    
-                    //check if only one await signal was sent
-                    REQUIRE(authQueue.awaitSignal.try_wait());
-                    REQUIRE(!authQueue.awaitSignal.try_wait());
-                    
-                    //check if only one continue signal was sent
-                    REQUIRE(authQueue.continueSignal.try_wait());
-                    REQUIRE(!authQueue.continueSignal.try_wait());
                     
                     //check that both entries were deleted
                     REQUIRE(authQueue.list.size() == 0);
