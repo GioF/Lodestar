@@ -39,6 +39,10 @@ namespace Lodestar{
                 passLock.unlock();
             }
 
+            int threadHeuristic(){
+                return 0;
+            }
+
             /**
              * Simply inserts an authenticable node into the base class' list.
              *

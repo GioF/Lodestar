@@ -57,7 +57,7 @@ namespace Lodestar{
              * launching [the returned amount] new threads if positive, and stopping
              * [the returned amount] threads if negative.
              * */
-            //virtual int threadHeuristic() = 0;
+            virtual int threadHeuristic() = 0;
 
             /**
              * Function called to iterate over list and manage its entries.
@@ -143,37 +143,30 @@ namespace Lodestar{
 
             /**
              * Oversees the managedList by calling cleanList(), then scaling up or
-             * down amount of running threads iterating through this list, and then
-             * sleeping for 500 milliseconds.
-             *
-             * Since this function blocks until the object is being destructed, it's
-             * best to launch it in a standalone thread.
+             * down amount of running threads iterating through this list via
+             * threadHeuristics(), and then sleeping for 500 milliseconds.
              * */
             void oversee(){
                 int nNewThreads = 0;
 
-                while(isOk){
-                    cleanList();
-                    //will uncomment once threadHeuristic is implemented
-                    //nNewThreads = threadHeuristic();
-
-                    if(nNewThreads > 0){
-                        //start [nNewThreads] new threads
-                        while(nNewThreads > 0){
-                            threadList.push_front(std::thread(&ManagedList::iterate, this));
-                            nNewThreads--;
-                        }
-                    }else if(nNewThreads < 0){
-                        //send [-nNewThreads] stopSignals to scale down
-                        //amount of running threads
-                        while(nNewThreads < 0){
-                            stopSignal.post();
-                            nNewThreads++;
-                        }
+                cleanList();
+                nNewThreads = threadHeuristic();
+                
+                if(nNewThreads > 0){
+                    //start [nNewThreads] new threads
+                    while(nNewThreads > 0){
+                        auto nThread = std::thread(&ManagedList::iterate, this);
+                        nThread.detach();
+                        threadList.push_front(std::move(nThread));
+                        nNewThreads--;
                     }
-
-                    // NOTE: should only sleep when executing asynchronously
-                    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                }else if(nNewThreads < 0){
+                    //send [-nNewThreads] stopSignals to scale down
+                    //amount of running threads
+                    while(nNewThreads < 0){
+                        stopSignal.post();
+                        nNewThreads++;
+                    }
                 }
             }
     };
