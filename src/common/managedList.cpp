@@ -1,3 +1,5 @@
+#ifndef LODEMLIST_H
+#define LODEMLIST_H
 #include <list>
 #include <mutex>
 #include <utility>
@@ -16,7 +18,7 @@ namespace Lodestar{
 
             bool isOk;
 
-            std::list<std::thread*> threadList;
+            std::list<std::thread> threadList;
             std::mutex threadLock;     ///< mutex to control thread starting and stopping
             std::atomic<int> nSignals;
             semaphore awaitSignal;
@@ -65,7 +67,7 @@ namespace Lodestar{
              * */
             virtual void manage() = 0;
 
-            // XXX: This is probably an unsafe function, check this later
+            // NOTE: This is probably an unsafe function, check this later
             /**
              * Calls manage() until it is sent a signal to stop.
              *
@@ -158,7 +160,7 @@ namespace Lodestar{
                     if(nNewThreads > 0){
                         //start [nNewThreads] new threads
                         while(nNewThreads > 0){
-                            auto newThread = new std::thread(&ManagedList::iterate, this);
+                            threadList.push_front(std::thread(&ManagedList::iterate, this));
                             nNewThreads--;
                         }
                     }else if(nNewThreads < 0){
@@ -176,3 +178,4 @@ namespace Lodestar{
             }
     };
 }
+#endif
