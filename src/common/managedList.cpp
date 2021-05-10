@@ -65,12 +65,16 @@ namespace Lodestar{
              * */
             virtual void manage() = 0;
 
+            // XXX: This is probably an unsafe function, check this later
             /**
              * Calls manage() until it is sent a signal to stop.
              *
-             * To safeguard against starting or stopping the manage() loop while
-             * cleanList() executes, it uses threadLock() before incrementing or
-             * decrementing nSignals. This probably isn't safe.
+             * Before entering the loop that calls manage(), increments nSignals
+             * so that the amount of threads operating on this list is known.
+             * 
+             * To safeguard against changing nSignals while cleanList() executes,
+             * it uses threadLock() before incrementing or decrementing nSignals.
+             * This probably isn't safe, so i'll look at it later.
              * */
             void iterate(){
                 threadLock.lock();
@@ -78,12 +82,9 @@ namespace Lodestar{
                 threadLock.unlock();
 
                 while(!stopSignal.try_wait()){
-                    //check if there is a signal to wait for deletion
-                    if(awaitSignal.try_wait()){
-                        //notify deletion thread that this thread is waiting
-                        waitingSignal.post();
-                        //wait until deletion thread signals to continue
-                        continueSignal.wait(); 
+                    if(awaitSignal.try_wait()){ //check if there is a signal to wait for deletion
+                        waitingSignal.post();   //notify deletion thread that this thread is waiting
+                        continueSignal.wait();  //wait until deletion thread signals to continue
                     }
 
                     manage();
@@ -93,9 +94,8 @@ namespace Lodestar{
                     nSignals--;
                     threadLock.unlock();
                 }else{
-                    //behave as a waiting thread (so that
-                    //cleanList() functions correctly), then
-                    //subtract number of running threads
+                    //need to behave as a waiting thread
+                    //(so that cleanList() functions correctly)
                     awaitSignal.wait();
                     waitingSignal.post();
                     continueSignal.wait();
