@@ -20,7 +20,7 @@ namespace Lodestar{
 
             std::list<std::thread> threadList;
             std::mutex threadLock;     ///< mutex to control thread starting and stopping
-            std::atomic<int> nSignals;
+            int nSignals = 0;
             semaphore awaitSignal;
             semaphore waitingSignal;
             semaphore continueSignal;
