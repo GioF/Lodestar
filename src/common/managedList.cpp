@@ -12,16 +12,20 @@ namespace Lodestar{
     template <class listType>
     class ManagedList{
         public:
-            ManagedList(): awaitSignal(0), waitingSignal(0), continueSignal(0){};
+            ManagedList(): awaitSignal(0), waitingSignal(0), continueSignal(0), stopSignal(0){};
 
+            bool isOk;
+
+            std::list<std::thread*> threadList;
             std::mutex threadLock;     ///< mutex to control thread starting and stopping
             std::atomic<int> nSignals;
             semaphore awaitSignal;
             semaphore waitingSignal;
             semaphore continueSignal;
+            semaphore stopSignal;      ///< signal to stop a list manager from executing
 
             std::list<listType> list;
-            std::mutex listLock;      ///< mutext to control list addition
+            std::mutex listLock;      ///< mutex to control list addition
 
             /**
              * Calls list.remove_if to delete items that have a false active property.
@@ -43,6 +47,15 @@ namespace Lodestar{
              * @returns if deletion process should start.
              * */
             virtual bool deletionHeuristic() = 0;
+
+            /**
+             * Function called to decide if new threads should be spawned.
+             *
+             * This is used as a way to scale the amount of workers managing the list,
+             * launching [the returned amount] new threads if positive, and stopping
+             * [the returned amount] threads if negative.
+             * */
+            //virtual int threadHeuristic() = 0;
 
             /**
              * Function called to iterate over list and manage its entries.
@@ -123,10 +136,42 @@ namespace Lodestar{
 
                     threadLock.unlock();
                     listLock.unlock();
+                }
+            }
 
-                    //i don't know why i want to put this here, but something
-                    //tells me this will fix something that i don't know yet
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            /**
+             * Oversees the managedList by calling cleanList(), then scaling up or
+             * down amount of running threads iterating through this list, and then
+             * sleeping for 500 milliseconds.
+             *
+             * Since this function blocks until the object is being destructed, it's
+             * best to launch it in a standalone thread.
+             * */
+            void oversee(){
+                int nNewThreads = 0;
+
+                while(isOk){
+                    cleanList();
+                    //will uncomment once threadHeuristic is implemented
+                    //nNewThreads = threadHeuristic();
+
+                    if(nNewThreads > 0){
+                        //start [nNewThreads] new threads
+                        while(nNewThreads > 0){
+                            auto newThread = new std::thread(&ManagedList::iterate, this);
+                            nNewThreads--;
+                        }
+                    }else if(nNewThreads < 0){
+                        //send [-nNewThreads] stopSignals to scale down
+                        //amount of running threads
+                        while(nNewThreads < 0){
+                            stopSignal.post();
+                            nNewThreads++;
+                        }
+                    }
+
+                    // NOTE: should only sleep when executing asynchronously
+                    std::this_thread::sleep_for(std::chrono::milliseconds(500));
                 }
             }
     };
