@@ -102,7 +102,7 @@ namespace Lodestar{
 
                     threadLock.lock();
                     nSignals--;
-                    threadLock.lock();
+                    threadLock.unlock();
                 }
             }
             
