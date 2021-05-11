@@ -20,7 +20,7 @@ namespace Lodestar{
 
             std::list<std::thread> threadList;
             std::mutex threadLock;     ///< mutex to control thread starting and stopping
-            int nSignals = 0;
+            int nThreads = 0;
             semaphore awaitSignal;
             semaphore waitingSignal;
             semaphore continueSignal;
@@ -71,16 +71,16 @@ namespace Lodestar{
             /**
              * Calls manage() until it is sent a signal to stop.
              *
-             * Before entering the loop that calls manage(), increments nSignals
+             * Before entering the loop that calls manage(), increments nThreads
              * so that the amount of threads operating on this list is known.
              * 
-             * To safeguard against changing nSignals while cleanList() executes,
-             * it uses threadLock() before incrementing or decrementing nSignals.
+             * To safeguard against changing nThreads while cleanList() executes,
+             * it uses threadLock() before incrementing or decrementing nThreads.
              * This probably isn't safe, so i'll look at it later.
              * */
             void iterate(){
                 threadLock.lock();
-                nSignals++;
+                nThreads++;
                 threadLock.unlock();
 
                 while(!stopSignal.try_wait()){
@@ -93,7 +93,7 @@ namespace Lodestar{
                 }
 
                 if(threadLock.try_lock()){
-                    nSignals--;
+                    nThreads--;
                     threadLock.unlock();
                 }else{
                     //need to behave as a waiting thread
@@ -103,7 +103,7 @@ namespace Lodestar{
                     continueSignal.wait();
 
                     threadLock.lock();
-                    nSignals--;
+                    nThreads--;
                     threadLock.unlock();
                 }
             }
@@ -112,10 +112,10 @@ namespace Lodestar{
              * Signals threads to stop operating on this list and calls deletionFunction()
              * if deletionHeuristic() returns true.
              * 
-             * Will send [nSignals] signals via awaitSignal so that threads operating
+             * Will send [nThreads] signals via awaitSignal so that threads operating
              * on this list are notified to wait, then wait for them to notify they are
              * waiting; once it's done, calls deletionFunction() to delete entries, then
-             * and sends [nSignals] signals via continueSignal to notify that deletion is done.
+             * and sends [nThreads] signals via continueSignal to notify that deletion is done.
              *
              * To prevent concurrent write access to list or thread creation durint list cleanup,
              * locks listLock and threadLock, then unlocks them once done.
@@ -125,15 +125,15 @@ namespace Lodestar{
                     listLock.lock();
                     threadLock.lock();
 
-                    for(int n = 0; n < nSignals; n++)
+                    for(int n = 0; n < nThreads; n++)
                         awaitSignal.post();
                     
-                    for(int n = 0; n < nSignals; n++)
+                    for(int n = 0; n < nThreads; n++)
                         waitingSignal.wait();
 
                     deletionFunction();
                     
-                    for(int n = 0; n < nSignals; n++)
+                    for(int n = 0; n < nThreads; n++)
                         continueSignal.post();
 
                     threadLock.unlock();
