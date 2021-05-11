@@ -90,11 +90,13 @@ namespace Lodestar{
             virtual bool deletionHeuristic() = 0;
 
             /**
-             * Function called to decide if new threads should be spawned.
+             * Function that determines how many threads should be running now.
              *
              * This is used as a way to scale the amount of workers managing the list,
-             * launching [the returned amount] new threads if positive, and stopping
-             * [the returned amount] threads if negative.
+             * launching [the returned amount - nThreads] new threads if returned value
+             * is greater than the amount of currently running threads, and stopping
+             * [the returned amount - nThreads] threads if returned value is lower than
+             * amount of currently running threads.
              * */
             virtual int threadHeuristic() = 0;
 
@@ -189,9 +191,9 @@ namespace Lodestar{
                 int nNewThreads = 0;
 
                 cleanList();
-                nNewThreads = threadHeuristic();
+                nNewThreads = threadHeuristic() - nThreads;
                 
-                if(nNewThreads > 0){
+                if(nNewThreads > 0 && nThreads <= maxThreads){
                     //start [nNewThreads] new threads
                     while(nNewThreads > 0){
                         auto nThread = std::async(&ManagedList::iterate, this);

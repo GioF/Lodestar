@@ -27,7 +27,7 @@ struct test_managed: public ManagedList<dummyEntry>{
 
         test_managed(const test_managed& copied){}
 
-        test_managed(): ManagedList(5){}
+        test_managed(){}
 };
 
 TEST_CASE("ManagedList"){
@@ -93,16 +93,30 @@ TEST_CASE("ManagedList"){
     }
     
     SUBCASE("oversee() - proper scaling"){
+        //so the destructor cleans the list
+        mockObj.isAsync = true;
+        //so at max 3 threads can be created
+        mockObj.maxThreads = 3;
+
+        //create 3 threads
         mockObj.heuristic = 3;
         mockObj.oversee();
 
         std::this_thread::sleep_for(100ms);
         REQUIRE(mockObj.nThreads == 3);
 
-        mockObj.heuristic = -3;
+        //check that no new threads were created
+        mockObj.oversee();
+
+        std::this_thread::sleep_for(100ms);
+        REQUIRE(mockObj.nThreads == 3);
+
+        //remove 3 threads
+        mockObj.heuristic = 0;
         mockObj.oversee();
 
         std::this_thread::sleep_for(100ms);
         REQUIRE(mockObj.nThreads == 0);
+        REQUIRE(!mockObj.stopSignal.try_wait());
     }
 };
