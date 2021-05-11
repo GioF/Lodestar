@@ -33,6 +33,8 @@ namespace Lodestar{
                 cutoff = moved.cutoff;
             }
 
+            using ManagedList::spin;
+
             void setPass(std::string pass){
                 passLock.lock();
                 password = pass;

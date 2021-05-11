@@ -212,6 +212,17 @@ namespace Lodestar{
                     return t.wait_for(1ms) == std::future_status::ready;
                 });
             }
+
+            /**
+             * Iterates once over list by using manage() then cleans it.
+             * Does nothing if class was constructed in async mode.
+             * */
+            void spin(){
+                if(isAsync){
+                    iterate();
+                    cleanList();
+                }
+            }
     };
 }
 #endif
