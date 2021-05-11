@@ -13,6 +13,19 @@ using semaphore = boost::interprocess::interprocess_semaphore;
 using namespace std::chrono_literals;
 
 namespace Lodestar{
+    /**
+     * An abstract class to implement managed lists with.
+     *
+     * It can be either used synchronously - in which the program needs to call spin()
+     * regularly to manage said lists by calling manage() and then cleaning the list with
+     * cleanList(), or asynchronously by dynamically starting new threads according to the
+     * defined thread heuristics.
+     *
+     * If only used synchronously, only manage(), deletionHeuristic(), and deletionFunction()
+     * need to be properly implemented.
+     *
+     * If used asynchronously, threadHeuristic() also needs to be properly implemented.
+     * */
     template <class listType>
     class ManagedList{
         public:
@@ -27,8 +40,9 @@ namespace Lodestar{
              * @param nMaxThreads the maximum amount of threads that this ManagedList can
              * have at once.
              * */
-            ManagedList(long nMaxThreads): maxThreads(nMaxThreads){
+            ManagedList(long nMaxThreads, std::chrono::microseconds sleepTime): maxThreads(nMaxThreads){
                 isAsync = true;
+                init(sleepTime);
             }
 
             ~ManagedList(){
@@ -69,17 +83,18 @@ namespace Lodestar{
             std::mutex listLock;      ///< mutex to control list addition
 
             /**
-             * Calls list.remove_if to delete items that have a false active property.
+             * Function to remove certain entries on the list (by default, entries with
+             * a false [active] property).
              *
-             * When reimplementing it, remember to call list.remove_if since
-             * this behaviour is expected.
+             * Called when spin() or oversee() is called, so as long as spinning regularly
+             * or operating asynchronously it isn't necessary to manually call it.
              * */
             virtual void deletionFunction(){
                     list.remove_if([](listType item){return !item.active;});
             }
 
             /**
-             * Function called to decide if deletion process should take place or not.
+             * Function called to decide when deletionFunction() should be called.
              *
              * This function should only return true at the when cleaning
              * the list up will be a net benefit, so define this heuristic
@@ -90,7 +105,7 @@ namespace Lodestar{
             virtual bool deletionHeuristic() = 0;
 
             /**
-             * Function that determines how many threads should be running now.
+             * Function that determines how many threads should be running at the moment.
              *
              * This is used as a way to scale the amount of workers managing the list,
              * launching [the returned amount - nThreads] new threads if returned value
@@ -185,7 +200,7 @@ namespace Lodestar{
             /**
              * Oversees the managedList by calling cleanList(), then scaling up or
              * down amount of running threads iterating through this list via
-             * threadHeuristics(), and then sleeping for 500 milliseconds.
+             * threadHeuristics()
              * */
             void oversee(){
                 int nNewThreads = 0;
@@ -224,6 +239,20 @@ namespace Lodestar{
                     iterate();
                     cleanList();
                 }
+            }
+
+        private:
+            /**
+             * Function called to start overseer thread.
+             *
+             * @param sleepTime the time that the thread should sleep
+             * between oversee() calls.
+             * */
+            void init(std::chrono::milliseconds sleepTime){
+                overseerThread = std::thread([this, sleepTime](){
+                    oversee();
+                    std::this_thread::sleep_for(sleepTime);
+                });
             }
     };
 }
