@@ -1,4 +1,3 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "communication.cpp"
 #include "doctest.h"
 #include <cstdlib>

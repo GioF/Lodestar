@@ -1,4 +1,3 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <chrono>
 #include <sys/socket.h>
 #include <boost/interprocess/sync/interprocess_semaphore.hpp>

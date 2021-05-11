@@ -247,36 +247,6 @@ namespace Lodestar{
                         REQUIRE(connList.size() == 1);
                     }
                 }
-
-                SUBCASE("list cleanup - entry deletion and thread sincronization"){
-                    Lodestar::autheableNode dummyEntry;
-                    dummyEntry.active = false;
-                    dummyEntry.timeout = std::chrono::steady_clock::now();
-                    authQueue.nSignals = 1;
-                    
-                    //insert two entries and see if they are there
-                    authQueue.list.push_back(dummyEntry);
-                    authQueue.list.push_back(dummyEntry);
-                    REQUIRE(authQueue.list.size() == 2);
-                    
-                    //signal deletion function that the auth thread is
-                    //waiting and then call cleanup
-                    authQueue.waitingSignal.post();
-                    authQueue.cutoff = 1;
-                    authQueue.cleanList();
-                    
-                    //check that both entries were deleted
-                    REQUIRE(authQueue.list.size() == 0);
-                    
-                    //insert another entry
-                    authQueue.list.push_back(dummyEntry);
-                    REQUIRE(authQueue.list.size() == 1);
-                    
-                    //check if it was deleted again
-                    authQueue.waitingSignal.post();
-                    authQueue.cleanList();
-                    REQUIRE(authQueue.list.size() == 0);
-                }
             };
     };
 }
