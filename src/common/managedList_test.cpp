@@ -27,7 +27,7 @@ struct test_managed: public ManagedList<dummyEntry>{
 
         test_managed(const test_managed& copied){}
 
-        test_managed(){}
+        test_managed(): ManagedList(5){}
 };
 
 TEST_CASE("ManagedList"){

@@ -6,25 +6,64 @@
 #include <atomic>
 #include <chrono>
 #include <thread>
+#include <future>
 #include <boost/interprocess/sync/interprocess_semaphore.hpp>
 
 using semaphore = boost::interprocess::interprocess_semaphore;
+using namespace std::chrono_literals;
 
 namespace Lodestar{
     template <class listType>
     class ManagedList{
         public:
-            ManagedList(): awaitSignal(0), waitingSignal(0), continueSignal(0), stopSignal(0){};
+            /**
+             * Simple constructor made to manage the list synchronously by calling spin().
+             * */
+            ManagedList(){};
+
+            /**
+             * Constructor to be used when managing list asynchronoously via threads.
+             *
+             * @param nMaxThreads the maximum amount of threads that this ManagedList can
+             * have at once.
+             * */
+            ManagedList(long nMaxThreads): maxThreads(nMaxThreads){
+                isAsync = true;
+            }
+
+            ~ManagedList(){
+                if(isAsync){
+                    //stop overseer thread
+                    isOk = false;
+                    if(overseerThread.joinable())
+                       overseerThread.join();
+
+                    //tell all threads to stop
+                    while(nThreads > 0){
+                        stopSignal.post();
+                        nThreads--;
+                    }
+
+                    //join them all
+                    for(auto it = threadList.begin(); it != threadList.end(); it++){
+                        it->wait();
+                    }
+                }
+            }
 
             bool isOk;
 
-            std::list<std::thread> threadList;
+            bool isAsync;
+            std::list<std::future<void>> threadList;
+            std::thread overseerThread;
             std::mutex threadLock;     ///< mutex to control thread starting and stopping
+            int maxThreads = 0;
             int nThreads = 0;
-            semaphore awaitSignal;
-            semaphore waitingSignal;
-            semaphore continueSignal;
-            semaphore stopSignal;      ///< signal to stop a list manager from executing
+
+            semaphore awaitSignal = 0;
+            semaphore waitingSignal = 0;
+            semaphore continueSignal = 0;
+            semaphore stopSignal = 0;      ///< signal to stop a list manager from executing
 
             std::list<listType> list;
             std::mutex listLock;      ///< mutex to control list addition
@@ -155,8 +194,7 @@ namespace Lodestar{
                 if(nNewThreads > 0){
                     //start [nNewThreads] new threads
                     while(nNewThreads > 0){
-                        auto nThread = std::thread(&ManagedList::iterate, this);
-                        nThread.detach();
+                        auto nThread = std::async(&ManagedList::iterate, this);
                         threadList.push_front(std::move(nThread));
                         nNewThreads--;
                     }
@@ -168,6 +206,11 @@ namespace Lodestar{
                         nNewThreads++;
                     }
                 }
+
+                //clean threads that are inactive
+                threadList.remove_if([](std::future<void>& t){
+                    return t.wait_for(1ms) == std::future_status::ready;
+                });
             }
     };
 }
