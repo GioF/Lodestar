@@ -63,6 +63,9 @@ namespace Lodestar{
                     std::string socketPath = std::string(getenv("HOME"));
                     socketPath.append("/.local/share/lodestar/mastersocket");
                     setupListener(socketPath);
+
+                    // NOTE: remember to call this based on config
+                    authQueue = std::move(AuthQueue(nodeArray, " ", 10, 3, 200ms));
                 }
             };
 
@@ -98,7 +101,7 @@ namespace Lodestar{
             
             topicTreeNode* rootNode = new topicTreeNode; ///< tree of directories and topics.
             std::list<connectedNode> nodeArray;        ///< array of nodes connected to this master.
-            AuthQueue authQueue = AuthQueue(nodeArray);
+            AuthQueue authQueue = AuthQueue(nodeArray, " ", 5);
             
             /**
              * Tokenizes a path string with "/" as delimiter.

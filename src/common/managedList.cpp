@@ -37,8 +37,11 @@ namespace Lodestar{
             /**
              * Constructor to be used when managing list asynchronoously via threads.
              *
-             * @param nMaxThreads the maximum amount of threads that this ManagedList can
-             * have at once.
+             * Notice that this doesn't start the overseer thread automatically; init()
+             * still needs to be called.
+             *
+             * @param nMaxThreads the maximum amount of threads that this ManagedList
+             * can have at once.
              * */
             ManagedList(long nMaxThreads): maxThreads(nMaxThreads){
                 isAsync = true;

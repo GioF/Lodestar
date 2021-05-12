@@ -6,6 +6,7 @@
 #include <thread>
 #include <future>
 #include <atomic>
+#include <cmath>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <boost/interprocess/sync/interprocess_semaphore.hpp>
@@ -17,23 +18,39 @@
 namespace Lodestar{
     class AuthQueue: ManagedList<autheableNode>{
         public:
-            AuthQueue(std::list<connectedNode>& connList){
-                authenticatedList = &connList;
-                cutoff = 5;
-            }
+            /**
+             * Constructs an AuthQueue to be used synchronously.
+             *
+             * @param connList the list connected nodes go to.
+             * @param pass the password to be authenticated against.
+             * @param _cutoff
+             * */
+            AuthQueue(std::list<connectedNode>& connList, std::string pass, int _cutoff):
+                authenticatedList(&connList),
+                cutoff(_cutoff),
+                password(pass){}
 
-            AuthQueue(std::list<connectedNode>& connList, int _cutoff){
-                authenticatedList = &connList;
-                cutoff = _cutoff;
-            }
-
-            AuthQueue(std::list<connectedNode>& connList,
-                      int _cutoff,
-                      long nMaxThreads,
-                      std::chrono::milliseconds sleepTime):
-            ManagedList(nMaxThreads){
-                authenticatedList = &connList;
-                cutoff = _cutoff;
+            /**
+             * Constructs an AuthQueue and starts overseer thread.
+             *
+             * @param connList the list connected nodes go to.
+             * @param pass the password to be authenticated against.
+             * @param _cutoff
+             * @param nMaxThreads the max number of threads the AuthQueue can have.
+             * @param sleepTime how much should the overseer thread sleep after each loop.
+             * */
+            AuthQueue(
+                std::list<connectedNode>& connList,
+                std::string pass,
+                int _cutoff,
+                long nMaxThreads,
+                std::chrono::milliseconds sleepTime
+            ):
+                authenticatedList(&connList),
+                password(pass),
+                cutoff(_cutoff),
+                ManagedList(nMaxThreads)
+            {
                 init(sleepTime);
             }
 
@@ -41,6 +58,14 @@ namespace Lodestar{
                 authenticatedList = moved.authenticatedList;
                 password = std::move(moved.password);
                 cutoff = moved.cutoff;
+            }
+
+            AuthQueue& operator=(AuthQueue&& moved){
+                authenticatedList = moved.authenticatedList;
+                password = std::move(moved.password);
+                cutoff = moved.cutoff;
+
+                return *this;
             }
 
             using ManagedList::spin;
@@ -52,7 +77,7 @@ namespace Lodestar{
             }
 
             int threadHeuristic(){
-                return 0;
+                return ceil(list.size() / 20);
             }
 
             /**
@@ -164,13 +189,13 @@ namespace Lodestar{
         private:
             int cutoff = 2;
             std::atomic<int> iteratorTimeout = 100;
-            std::string password = " "; ///< the password this object authenticates each node against.
+            std::string password; ///< the password this object authenticates each node against.
             std::mutex passLock;
-            std::list<connectedNode>* authenticatedList; ///< a pointer to the authenticated node list.
+            std::list<connectedNode>* authenticatedList = NULL; ///< a pointer to the authenticated node list.
 
             TEST_CASE_CLASS("AuthQueue - internal business logic"){
                 std::list<connectedNode> connList;
-                AuthQueue authQueue = AuthQueue(connList);
+                AuthQueue authQueue = AuthQueue(connList, " ", 5);
                 
                 Lodestar::autheableNode dummyEntry;
                 dummyEntry.timeout = std::chrono::steady_clock::now();
