@@ -40,9 +40,8 @@ namespace Lodestar{
              * @param nMaxThreads the maximum amount of threads that this ManagedList can
              * have at once.
              * */
-            ManagedList(long nMaxThreads, std::chrono::microseconds sleepTime): maxThreads(nMaxThreads){
+            ManagedList(long nMaxThreads): maxThreads(nMaxThreads){
                 isAsync = true;
-                init(sleepTime);
             }
 
             ~ManagedList(){
