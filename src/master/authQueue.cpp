@@ -27,6 +27,16 @@ namespace Lodestar{
                 cutoff = _cutoff;
             }
 
+            AuthQueue(std::list<connectedNode>& connList,
+                      int _cutoff,
+                      long nMaxThreads,
+                      std::chrono::milliseconds sleepTime):
+            ManagedList(nMaxThreads){
+                authenticatedList = &connList;
+                cutoff = _cutoff;
+                init(sleepTime);
+            }
+
             AuthQueue(AuthQueue&& moved){
                 authenticatedList = moved.authenticatedList;
                 password = std::move(moved.password);
