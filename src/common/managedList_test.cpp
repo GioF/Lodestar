@@ -6,29 +6,39 @@
 using namespace Lodestar;
 using namespace std::chrono_literals;
 
-struct dummyEntry{
-    bool active = false;
-
-    dummyEntry(const dummyEntry& copied){
-        active = copied.active;
-    }
-
-    dummyEntry(){}
-};
-
-struct test_managed: public ManagedList<dummyEntry>{
-        void manage(){ std::this_thread::sleep_for(50ms); }
-        bool deletionHeuristic() { return true; }
-
-        int heuristic = 0;
-        int threadHeuristic(){
-            return heuristic;
+namespace Lodestar{
+    struct dummyEntry{
+        bool active = false;
+        
+        dummyEntry(const dummyEntry& copied){
+            active = copied.active;
         }
-
-        test_managed(const test_managed& copied){}
-
-        test_managed(){}
-};
+        
+        dummyEntry(){}
+    };
+    
+    struct test_managed: public ManagedList<dummyEntry>{
+            void manage(){ std::this_thread::sleep_for(50ms); }
+            bool deletionHeuristic() { return true; }
+            
+            int heuristic = 0;
+            int threadHeuristic(){
+                return heuristic;
+            }
+            
+            test_managed(const test_managed& copied){}
+            
+            test_managed(){}
+            using ManagedList::iterate;
+            using ManagedList::cleanList;
+            using ManagedList::oversee;
+            using ManagedList::threadLock;
+            using ManagedList::stopSignal;
+            using ManagedList::continueSignal;
+            using ManagedList::awaitSignal;
+            using ManagedList::waitingSignal;
+    };
+}
 
 TEST_CASE("ManagedList"){
     test_managed mockObj;

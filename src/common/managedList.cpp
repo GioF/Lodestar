@@ -65,22 +65,52 @@ namespace Lodestar{
                 }
             }
 
-            bool isOk;
-
             bool isAsync;
-            std::list<std::future<void>> threadList;
-            std::thread overseerThread;
-            std::mutex threadLock;     ///< mutex to control thread starting and stopping
             int maxThreads = 0;
             int nThreads = 0;
+
+            std::list<listType> list;
+            std::mutex listLock;      ///< mutex to control list addition
+
+            /**
+             * Function called to start overseer thread.
+             *
+             * @param sleepTime the time that the thread should sleep
+             * between oversee() calls.
+             * */
+            void init(std::chrono::milliseconds sleepTime){
+                overseerThread = std::thread([this, sleepTime](){
+                    oversee();
+                    std::this_thread::sleep_for(sleepTime);
+                });
+            }
+
+            /**
+             * Iterates once over list by using manage() then cleans it.
+
+             * */
+            void spin(){
+                if(isAsync){
+                    iterate();
+                    cleanList();
+                }
+            }
+
+        protected:
+            std::thread overseerThread;
+
+        private:
+            friend class test_managed;
+
+            bool isOk;
+
+            std::list<std::future<void>> threadList;
+            std::mutex threadLock;     ///< mutex to control thread starting and stopping
 
             semaphore awaitSignal = 0;
             semaphore waitingSignal = 0;
             semaphore continueSignal = 0;
             semaphore stopSignal = 0;      ///< signal to stop a list manager from executing
-
-            std::list<listType> list;
-            std::mutex listLock;      ///< mutex to control list addition
 
             /**
              * Function to remove certain entries on the list (by default, entries with
@@ -227,31 +257,6 @@ namespace Lodestar{
                 //clean threads that are inactive
                 threadList.remove_if([](std::future<void>& t){
                     return t.wait_for(1ms) == std::future_status::ready;
-                });
-            }
-
-            /**
-             * Iterates once over list by using manage() then cleans it.
-             * Does nothing if class was constructed in async mode.
-             * */
-            void spin(){
-                if(isAsync){
-                    iterate();
-                    cleanList();
-                }
-            }
-
-        private:
-            /**
-             * Function called to start overseer thread.
-             *
-             * @param sleepTime the time that the thread should sleep
-             * between oversee() calls.
-             * */
-            void init(std::chrono::milliseconds sleepTime){
-                overseerThread = std::thread([this, sleepTime](){
-                    oversee();
-                    std::this_thread::sleep_for(sleepTime);
                 });
             }
     };
